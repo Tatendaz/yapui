@@ -1,0 +1,9 @@
+{
+  "name": "yapui",
+  "description": "Yap at your UI — live HTML preview with a two-way feedback loop. Preview or serve any HTML and give feedback by typing, talking, screen-recording, screenshotting, or clicking to pick an element; Claude picks it up in real time, fixes it, and replies in the browser.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Tatendaz",
+    "url": "https://github.com/Tatendaz"
+  }
+}
