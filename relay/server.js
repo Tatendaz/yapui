@@ -56,9 +56,10 @@ const knownTasks = new Set();
 tasksText().split('\n').filter(Boolean).forEach(function (l) { try { const o = JSON.parse(l); if (o.type === 'task') knownTasks.add(o.id); } catch (e) {} });
 function appendTask(rec) { fs.appendFileSync(TASKS, JSON.stringify(rec) + '\n'); pushTasks(); }
 function ensureTask(id, text, screen) {
+  id = String(id || '').slice(0, 64); // canonicalize exactly like appendTask writes it, so dedup matches the file
   if (!id || knownTasks.has(id)) return;
   knownTasks.add(id);
-  appendTask({ type: 'task', id: String(id).slice(0, 64), text: (text || '(no note)').toString().slice(0, 2000), screen: (screen || 'page').toString().slice(0, 200), status: 'queued', ts: new Date().toISOString() });
+  appendTask({ type: 'task', id: id, text: (text || '(no note)').toString().slice(0, 2000), screen: (screen || 'page').toString().slice(0, 200), status: 'queued', ts: new Date().toISOString() });
 }
 
 let repliesSeen = countLines(REPLIES);
@@ -98,6 +99,30 @@ function inject(html) {
   const tag = '<script src="/__feedback.js" defer></script>';
   return html.indexOf('</body>') !== -1 ? html.replace('</body>', tag + '\n</body>') : html + tag;
 }
+// a random web page must not be able to POST into the relay (it edits files);
+// browsers send Origin on cross-origin POSTs — allow only our own origin (or none: curl, same-origin forms)
+function originOk(req) {
+  const o = req.headers.origin;
+  if (!o) return true;
+  try { const u = new URL(o); return (u.hostname === 'localhost' || u.hostname === '127.0.0.1') && String(u.port || (u.protocol === 'http:' ? 80 : 443)) === String(PORT); }
+  catch (e) { return false; }
+}
+function guarded(res, fn) { // req 'end' callbacks run outside the request try/catch — a throw here must 500, not crash the relay
+  return function () { try { fn.apply(null, arguments); } catch (e) { try { res.writeHead(500); res.end('{"ok":false}'); } catch (e2) {} } };
+}
+const HTML_DIR = path.dirname(path.resolve(HTML_FILE));
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.mjs': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json' };
+function serveSibling(url, res) { // css/js/images referenced by the HTML live next to it — serve them, never anything outside
+  let rel; try { rel = decodeURIComponent(url).replace(/^\/+/, ''); } catch (e) { return false; }
+  if (!rel || rel.indexOf('\0') !== -1 || rel.split('/').some(function (seg) { return seg === '..' || seg[0] === '.'; })) return false;
+  const abs = path.resolve(HTML_DIR, rel);
+  if (!(abs + path.sep).startsWith(HTML_DIR + path.sep)) return false;
+  let st; try { st = fs.statSync(abs); } catch (e) { return false; }
+  if (!st.isFile()) return false;
+  res.writeHead(200, { 'Content-Type': MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+  res.end(fs.readFileSync(abs));
+  return true;
+}
 function appendMd(s) { fs.appendFileSync(FB_MD, s); }
 function elementMd(el) {
   if (!el || !el.selector) return '';
@@ -113,6 +138,7 @@ function voiceMd(arr) { if (!Array.isArray(arr) || !arr.length) return ''; var o
 const server = http.createServer(function (req, res) {
   try {
     const url = (req.url || '/').split('?')[0];
+    if (req.method === 'POST' && !originOk(req)) { res.writeHead(403); return res.end('{"ok":false,"error":"cross-origin"}'); }
 
     if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
       const html = fs.readFileSync(HTML_FILE, 'utf8'); // re-read each load -> HTML edits show on refresh
@@ -159,19 +185,19 @@ const server = http.createServer(function (req, res) {
     }
     if (req.method === 'POST' && url === '/task') {
       let body = ''; req.on('data', function (c) { body += c; if (body.length > 1e5) req.destroy(); });
-      req.on('end', function () { let t; try { t = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end('{"ok":false}'); }
+      req.on('end', guarded(res, function () { let t; try { t = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end('{"ok":false}'); }
         if (!t.id) { res.writeHead(400); return res.end('{"ok":false}'); }
         ensureTask(t.id, t.text, t.screen);
         process.stdout.write('[task+] ' + t.id + ' :: ' + String(t.text || '').replace(/\n/g, ' ') + '\n');
-        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); });
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); }));
       return;
     }
     if (req.method === 'POST' && url === '/task/dismiss') {
       let body = ''; req.on('data', function (c) { body += c; if (body.length > 1e5) req.destroy(); });
-      req.on('end', function () { let t; try { t = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end('{"ok":false}'); }
+      req.on('end', guarded(res, function () { let t; try { t = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end('{"ok":false}'); }
         if (!t.id) { res.writeHead(400); return res.end('{"ok":false}'); }
         appendTask({ type: 'status', id: String(t.id).slice(0, 64), status: 'dismissed', note: '', ts: new Date().toISOString() });
-        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); });
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); }));
       return;
     }
     if (req.method === 'POST' && url === '/tasks/clear') {
@@ -186,17 +212,17 @@ const server = http.createServer(function (req, res) {
     }
     if (req.method === 'POST' && url === '/cursor') {
       let body = ''; req.on('data', function (c) { body += c; if (body.length > 2e4) req.destroy(); });
-      req.on('end', function () { let c; try { c = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end('{"ok":false}'); }
+      req.on('end', guarded(res, function () { let c; try { c = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end('{"ok":false}'); }
         var rec = { desc: (c.desc || '').toString().slice(0, 300), label: (c.label || c.phone || '').toString().slice(0, 60), scene: (c.scene || '').toString().slice(0, 40), el: (c.el || '').toString().slice(0, 200), x: +c.x || 0, y: +c.y || 0, ts: c.ts || new Date().toISOString() };
         try { fs.writeFileSync(CURSOR, JSON.stringify(rec)); } catch (e) {}
-        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); });
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); }));
       return;
     }
 
     if (req.method === 'POST' && url === '/feedback') {
       let body = '';
       req.on('data', function (c) { body += c; if (body.length > 1e6) req.destroy(); });
-      req.on('end', function () {
+      req.on('end', guarded(res, function () {
         let fb;
         try { fb = JSON.parse(body); } catch (e) { res.writeHead(400); return res.end('{"ok":false}'); }
         fb.ts = fb.ts || new Date().toISOString();
@@ -209,7 +235,7 @@ const server = http.createServer(function (req, res) {
         process.stdout.write('[feedback] ' + fb.screen + ' :: ' + fb.text.replace(/\n/g, ' ') + (fb.element ? ' {el:' + fb.element.selector + '}' : '') + '\n');
         handoff({ taskId: fb.taskId || newId(), line: fbLines, text: fb.text.trim(), screen: fb.screen, voice: !!fb.voice, element: fb.element || null, cursor: fb.cursor || null, pointing: fb.pointing || null, voiceMarks: fb.voiceMarks || null });
         res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}');
-      });
+      }));
       return;
     }
 
@@ -219,7 +245,7 @@ const server = http.createServer(function (req, res) {
       req.on('end', function () {
         try {
           if (!fs.existsSync(REC_DIR)) fs.mkdirSync(REC_DIR, { recursive: true });
-          const buf = Buffer.concat(chunks); const name = 'clip-' + new Date().toISOString().replace(/[:.]/g, '-') + '.webm';
+          const buf = Buffer.concat(chunks); const name = 'clip-' + new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6) + '.webm';
           fs.writeFileSync(path.join(REC_DIR, name), buf);
           const note = b64(req.headers['x-note']); const screen = req.headers['x-screen'] ? decodeURIComponent(req.headers['x-screen']) : 'page'; const secs = req.headers['x-secs'] || '?';
           const cur = b64(req.headers['x-cursor']); let pts = []; try { pts = JSON.parse(b64(req.headers['x-pointing']) || '[]'); } catch (e) {}
@@ -240,7 +266,7 @@ const server = http.createServer(function (req, res) {
       req.on('end', function () {
         try {
           if (!fs.existsSync(SHOT_DIR)) fs.mkdirSync(SHOT_DIR, { recursive: true });
-          const buf = Buffer.concat(chunks); const name = 'shot-' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
+          const buf = Buffer.concat(chunks); const name = 'shot-' + new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6) + '.png';
           fs.writeFileSync(path.join(SHOT_DIR, name), buf);
           const note = b64(req.headers['x-note']); const screen = req.headers['x-screen'] ? decodeURIComponent(req.headers['x-screen']) : 'page';
           let element = null; try { if (req.headers['x-element']) element = JSON.parse(b64(req.headers['x-element'])); } catch (e) {}
@@ -255,6 +281,8 @@ const server = http.createServer(function (req, res) {
       });
       return;
     }
+
+    if (req.method === 'GET' && serveSibling(url, res)) return;
 
     res.writeHead(404); res.end('not found');
   } catch (e) { res.writeHead(500); res.end('error: ' + (e && e.message)); }

@@ -156,7 +156,11 @@
       recStream.getVideoTracks()[0].onended = function () { if (recording) stopRec(); };
       recSecs = 0; setRec(true); flash('Recording… narrate if you like');
       recTimer = setInterval(function () { recSecs++; document.getElementById('kfb-rec-timer').textContent = 'REC ' + fmt(recSecs); recLbl.textContent = 'Stop ' + fmt(recSecs); }, 1000);
-    } catch (e) { setRec(false); flash(e && e.name === 'NotAllowedError' ? 'Screen share cancelled' : 'Could not start recording', true); }
+    } catch (e) {
+      // don't leave captured screen/mic tracks running if MediaRecorder setup failed mid-way
+      if (recStream) { try { recStream.getTracks().forEach(function (t) { t.stop(); }); if (recStream.__mic) recStream.__mic.getTracks().forEach(function (t) { t.stop(); }); } catch (e2) {} recStream = null; }
+      setRec(false); flash(e && e.name === 'NotAllowedError' ? 'Screen share cancelled' : 'Could not start recording', true);
+    }
   }
   function stopRec() {
     if (mr && mr.state !== 'inactive') { try { mr.stop(); } catch (e) {} }
@@ -164,15 +168,16 @@
     if (recStream) { recStream.getTracks().forEach(function (t) { t.stop(); }); if (recStream.__mic) recStream.__mic.getTracks().forEach(function (t) { t.stop(); }); }
     setRec(false); recDot.classList.remove('show');
   }
+  function freeUrl(el) { try { if (el.src && el.src.indexOf('blob:') === 0) URL.revokeObjectURL(el.src); } catch (e) {} }
   function finishRec() {
     recBlob = new Blob(recChunks, { type: (mr && mr.mimeType) || 'video/webm' });
-    video.src = URL.createObjectURL(recBlob); clipBox.classList.add('show'); shotBox.classList.remove('show'); shotBlob = null;
+    freeUrl(video); video.src = URL.createObjectURL(recBlob); clipBox.classList.add('show'); shotBox.classList.remove('show'); shotBlob = null;
     clipLbl.textContent = 'Clip ' + fmt(recSecs) + ' · ' + Math.round(recBlob.size / 1024) + ' KB';
     if (!panel.classList.contains('show')) openP(); flash('Clip ready — add a note + Send');
   }
   recBtn.onclick = function () { if (!canRecord) return; if (recording) stopRec(); else startRec(); };
   recDot.onclick = function () { if (recording) stopRec(); openP(); };
-  $('#kfb-clipx').onclick = function () { recBlob = null; clipBox.classList.remove('show'); video.src = ''; };
+  $('#kfb-clipx').onclick = function () { recBlob = null; clipBox.classList.remove('show'); freeUrl(video); video.src = ''; };
 
   /* ---- element picker ---- */
   var picking = false, picked = null;
@@ -185,7 +190,7 @@
       var cls = cn.trim().split(/\s+/).filter(Boolean).slice(0, 2);
       if (cls.length) seg += '.' + cls.join('.');
       var p = node.parentNode;
-      if (p && p.children) { var same = [].filter.call(p.children, function (c) { return c.tagName === node.tagName; }); if (same.length > 1) seg += ':nth-of-type(' + (1 + [].indexOf.call(p.children, node)) + ')'; }
+      if (p && p.children) { var same = [].filter.call(p.children, function (c) { return c.tagName === node.tagName; }); if (same.length > 1) seg += ':nth-of-type(' + (1 + same.indexOf(node)) + ')'; }
       parts.unshift(seg); node = node.parentNode; depth++;
     }
     return parts.join(' > ');
@@ -199,21 +204,21 @@
   }
   function isOurs(el) { return !el || el.closest('#kfb-panel,#kfb-launch,#kfb-rec-dot,#kfb-hl,#kfb-pickbar'); }
   function targetAt(x, y) { var el = document.elementFromPoint(x, y); return isOurs(el) ? null : el; }
-  function onMove(e) { var el = targetAt(e.clientX, e.clientY); if (!el) { hl.style.display = 'none'; return; } var r = el.getBoundingClientRect(); hl.style.display = 'block'; hl.style.left = r.left + 'px'; hl.style.top = r.top + 'px'; hl.style.width = r.width + 'px'; hl.style.height = r.height + 'px'; }
+  function onPickMove(e) { var el = targetAt(e.clientX, e.clientY); if (!el) { hl.style.display = 'none'; return; } var r = el.getBoundingClientRect(); hl.style.display = 'block'; hl.style.left = r.left + 'px'; hl.style.top = r.top + 'px'; hl.style.width = r.width + 'px'; hl.style.height = r.height + 'px'; }
   function onPick(e) { e.preventDefault(); e.stopPropagation(); var el = targetAt(e.clientX, e.clientY); if (!el) return; picked = describe(el); exitPick(); openP(); renderPicked(); flash('Element attached'); }
   function onPickKey(e) { if (e.key === 'Escape') { e.preventDefault(); exitPick(); openP(); } }
   function enterPick() {
     if (picking) return; picking = true; pickBtn.classList.add('on'); closeP();
     document.documentElement.style.cursor = 'crosshair';
     hl.style.display = 'none'; pickBar.classList.add('show');
-    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('mousemove', onPickMove, true);
     document.addEventListener('click', onPick, true);
     document.addEventListener('keydown', onPickKey, true);
   }
   function exitPick() {
     picking = false; pickBtn.classList.remove('on'); document.documentElement.style.cursor = '';
     hl.style.display = 'none'; pickBar.classList.remove('show');
-    document.removeEventListener('mousemove', onMove, true);
+    document.removeEventListener('mousemove', onPickMove, true);
     document.removeEventListener('click', onPick, true);
     document.removeEventListener('keydown', onPickKey, true);
   }
@@ -238,16 +243,16 @@
     loadH2C().then(function () {
       return window.html2canvas(target, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true });
     }).then(function (canvas) {
-      canvas.toBlob(function (b) { if (!b) { flash('Capture failed', true); return; } shotBlob = b; shotImg.src = URL.createObjectURL(b); shotBox.classList.add('show'); clipBox.classList.remove('show'); recBlob = null; shotLbl.textContent = 'Screenshot · ' + Math.round(b.size / 1024) + ' KB' + (picked ? ' · ' + (picked.id ? '#' + picked.id : picked.tag) : ' · full page'); flash('Screenshot ready — add a note + Send'); }, 'image/png');
+      canvas.toBlob(function (b) { if (!b) { flash('Capture failed', true); return; } shotBlob = b; freeUrl(shotImg); shotImg.src = URL.createObjectURL(b); shotBox.classList.add('show'); clipBox.classList.remove('show'); recBlob = null; shotLbl.textContent = 'Screenshot · ' + Math.round(b.size / 1024) + ' KB' + (picked ? ' · ' + (picked.id ? '#' + picked.id : picked.tag) : ' · full page'); flash('Screenshot ready — add a note + Send'); }, 'image/png');
     }).catch(function () { flash('Screenshot needs internet (html2canvas)', true); });
   }
   snapBtn.onclick = snap;
-  $('#kfb-shotx').onclick = function () { shotBlob = null; shotBox.classList.remove('show'); shotImg.src = ''; };
+  $('#kfb-shotx').onclick = function () { shotBlob = null; shotBox.classList.remove('show'); freeUrl(shotImg); shotImg.src = ''; };
 
   /* ---- send ---- */
   function addLog(screen, text, kind) { var d = document.createElement('div'); d.className = 'kfb-item'; d.innerHTML = '<span class="s">' + esc(screen) + (kind ? ' · ' + kind : '') + '</span>' + esc(text || '(no note)'); log.insertBefore(d, log.firstChild); }
   function b64(s) { try { return btoa(unescape(encodeURIComponent(s))); } catch (e) { return ''; } }
-  function clearAll() { ta.value = ''; base = ''; usedVoice = false; voiceMarks = []; lastTranscript = ''; picked = null; renderPicked(); recBlob = null; clipBox.classList.remove('show'); video.src = ''; shotBlob = null; shotBox.classList.remove('show'); shotImg.src = ''; composeStart = Date.now(); try { localStorage.removeItem('kfb-draft'); } catch (e) {} }
+  function clearAll() { ta.value = ''; base = ''; usedVoice = false; voiceMarks = []; lastTranscript = ''; picked = null; renderPicked(); recBlob = null; clipBox.classList.remove('show'); freeUrl(video); video.src = ''; shotBlob = null; shotBox.classList.remove('show'); freeUrl(shotImg); shotImg.src = ''; composeStart = Date.now(); try { localStorage.removeItem('kfb-draft'); } catch (e) {} }
 
   function sendText() {
     var text = ta.value.trim();
@@ -259,7 +264,7 @@
     fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
       .then(function () { addLog(payload.screen, label, picked ? 'element' : (payload.voice ? 'voice' : null)); clearAll(); flash('Queued ✓'); })
-      .catch(function () { flash('Send failed — relay down?', true); })
+      .catch(function () { dismissTask(tid); flash('Send failed — relay down?', true); })  // roll the optimistic card back so it can't sit red forever
       .finally(function () { sendBtn.disabled = false; });
   }
   function sendBinary(urlPath, blob, kindLabel) {
@@ -273,7 +278,7 @@
     fetch(urlPath, { method: 'POST', headers: headers, body: blob })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
       .then(function () { addLog(screen, label, kindLabel); clearAll(); flash(kindLabel + ' queued ✓'); })
-      .catch(function () { flash('Upload failed — relay down?', true); })
+      .catch(function () { dismissTask(tid); flash('Upload failed — relay down?', true); })
       .finally(function () { sendBtn.disabled = false; });
   }
   sendBtn.onclick = function () {

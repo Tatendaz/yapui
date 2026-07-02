@@ -40,17 +40,20 @@ function freePort() {
 }
 function get(port, p) {
   return new Promise(function (resolve, reject) {
-    http.get({ host: '127.0.0.1', port: port, path: p }, function (res) {
+    const req = http.get({ host: '127.0.0.1', port: port, path: p, timeout: 4000 }, function (res) {
       let b = ''; res.on('data', function (c) { b += c; }); res.on('end', function () { resolve({ status: res.statusCode, body: b }); });
-    }).on('error', reject);
+    });
+    req.on('timeout', function () { req.destroy(new Error('timeout')); });
+    req.on('error', reject);
   });
 }
 function post(port, p, body, headers) {
   return new Promise(function (resolve, reject) {
     const data = typeof body === 'string' ? body : JSON.stringify(body);
-    const req = http.request({ host: '127.0.0.1', port: port, path: p, method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, headers || {}) }, function (res) {
+    const req = http.request({ host: '127.0.0.1', port: port, path: p, method: 'POST', timeout: 4000, headers: Object.assign({ 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, headers || {}) }, function (res) {
       let b = ''; res.on('data', function (c) { b += c; }); res.on('end', function () { resolve({ status: res.statusCode, body: b }); });
     });
+    req.on('timeout', function () { req.destroy(new Error('timeout')); });
     req.on('error', reject); req.end(data);
   });
 }
@@ -67,6 +70,8 @@ function startRelay(env) {
   tmpdirs.push(dir);
   const html = path.join(dir, 'page.html');
   fs.writeFileSync(html, '<!doctype html>\n<html><head><title>t</title></head><body>\n<h1>Hello</h1>\n</body></html>');
+  fs.writeFileSync(path.join(dir, 'style.css'), 'h1{color:red}');
+  fs.writeFileSync(path.join(dir, '.secret'), 'dot-hidden');
   const wd = path.join(dir, '.yapui');
   const child = spawn(process.execPath, [SERVER], {
     env: Object.assign({}, process.env, { HTML_FILE: html, WORKDIR: wd, YAP_CLAUDE_BIN: FAKE }, env),
@@ -136,6 +141,17 @@ async function testFallbackMode() {
   execFileSync(process.execPath, [FLIP, r.wd, 'm1', 'done', 'fixed'], { stdio: 'ignore' });
   const tasks2 = await waitFor(function () { return get(port, '/tasks').then(function (x) { return x.body.indexOf('"status":"done"') !== -1 ? x.body : null; }); }, 'external flip visible');
   ok(tasks2.indexOf('"status":"done"') !== -1, 'flip-status.js still drives the queue');
+
+  console.log('hardening:');
+  const css = await get(port, '/style.css');
+  ok(css.status === 200 && css.body === 'h1{color:red}', 'sibling assets (css/js/img) are served');
+  ok((await get(port, '/..%2f..%2fetc%2fpasswd')).status === 404, 'path traversal is blocked');
+  ok((await get(port, '/.secret')).status === 404, 'dotfiles are not served');
+  ok((await get(port, '/.yapui/feedback.jsonl')).status === 404, 'workdir artifacts are not served');
+  const evil = await post(port, '/feedback', { text: 'evil', taskId: 'x1' }, { Origin: 'https://evil.example' });
+  ok(evil.status === 403, 'cross-origin POSTs are rejected');
+  const good = await post(port, '/feedback', { text: 'good origin', taskId: 'x2' }, { Origin: 'http://localhost:' + port });
+  ok(good.status === 200, 'same-origin POSTs still pass');
 }
 
 (async function main() {

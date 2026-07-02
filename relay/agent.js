@@ -44,7 +44,7 @@ function create(opts) {
     '- Feedback artifacts live under ' + WORKDIR + ' — Read any referenced screenshot. For a recording, extract frames first:',
     '  ffmpeg -y -i <clip> -vf "fps=4,scale=400:-1,tile=8x8" -frames:v 1 ' + path.join(WORKDIR, 'frames.png') + '  — then Read the sheet.',
     '- Notes may carry an element selector and "pointing at" / spoken-word timelines — use them to resolve "this" / "that" to the real element.',
-    '- Your final message is shown to the user as a chat reply in the browser. One short plain sentence per note (e.g. "Made the hero heading larger."). No markdown, no code blocks.',
+    '- Your final message is shown to the user as a chat reply in the browser. One short plain sentence (e.g. "Made the hero heading larger."). No markdown, no code blocks.',
     '- If a note cannot be actioned (a question, missing info), start your final message with exactly "NEEDS-YOU: " followed by the question.'
   ].join('\n');
 
@@ -98,10 +98,10 @@ function create(opts) {
     try { child = spawn(BIN, args, { cwd: HTML_DIR, stdio: ['pipe', 'pipe', 'pipe'] }); }
     catch (e) { return bootFailed('spawn: ' + e.message); }
     st.child = child; st.buf = ''; st.results = 0; st.lastActivity = Date.now();
-    child.on('error', function (e) { bootFailed(e.code === 'ENOENT' ? '`' + BIN + '` not found on PATH' : e.message); });
-    child.stdout.on('data', function (d) { st.lastActivity = Date.now(); st.buf += d; drain(); });
+    child.on('error', function (e) { if (st.child === child) bootFailed(e.code === 'ENOENT' ? '`' + BIN + '` not found on PATH' : e.message); });
+    child.stdout.on('data', function (d) { if (st.child !== child) return; st.lastActivity = Date.now(); st.buf += d; drain(); });
     child.stderr.on('data', function (d) { const s = String(d).trim(); if (s) log('stderr: ' + s.slice(0, 400)); });
-    child.on('close', function (code) { onExit(code); });
+    child.on('close', function (code) { if (st.child === child) onExit(code); }); // a recycled/replaced child's exit must not touch the live one
     // prime: read the page now so the first real note starts hot
     st.priming = true;
     send('Warm-up: Read ' + HTML + ' now and keep its structure in mind so you can act instantly on the next note. Reply with exactly: READY');
@@ -110,7 +110,13 @@ function create(opts) {
   function bootFailed(msg) {
     log('agent unavailable — ' + msg);
     st.child = null;
+    drainQueues('agent unavailable — handled from the terminal');
     setState('off', msg);
+  }
+
+  function drainQueues(note) { // nothing may sit forever on a "⚡ warming" card
+    st.inFlight.concat(st.pending).forEach(function (it) { flip(it, 'queued', note); });
+    st.inFlight = []; st.pending = [];
   }
 
   function onExit(code) {
@@ -128,8 +134,8 @@ function create(opts) {
     }
     st.boots++;
     if (st.boots >= 3) {
+      drainQueues('agent down — handled from the terminal');
       setState('dead', 'agent kept crashing — watcher mode takes over');
-      st.pending.forEach(function (it) { flip(it, 'queued', 'agent down — handled from the terminal'); });
       return;
     }
     setTimeout(boot, st.boots * 1500);
@@ -214,29 +220,32 @@ function create(opts) {
   }
 
   /* ---- feedback in ---- */
-  function itemMd(it, i, n) {
-    const out = ['--- note ' + (i + 1) + '/' + n + ' (task ' + (it.taskId || '?') + ', screen: ' + (it.screen || 'page') + (it.voice ? ', spoken' : '') + ') ---'];
+  function artifactPath(rel) { // clamp workdir-relative artifact refs so a crafted note can't point outside WORKDIR
+    const p = path.resolve(WORKDIR, String(rel || ''));
+    return (p + path.sep).startsWith(WORKDIR + path.sep) || p === WORKDIR ? p : null;
+  }
+  function itemMd(it) {
+    const out = ['--- note (task ' + (it.taskId || '?') + ', screen: ' + (it.screen || 'page') + (it.voice ? ', spoken' : '') + ') ---'];
     if (it.text) out.push('"' + it.text + '"');
     if (it.element) out.push('element: ' + JSON.stringify(it.element));
     if (it.cursor && it.cursor.desc) out.push('pointing at (at send): ' + it.cursor.desc);
     if (Array.isArray(it.pointing) && it.pointing.length) out.push('pointing timeline: ' + it.pointing.map(function (p) { return Math.round((p.ms || 0) / 1000) + 's ' + (p.desc || ''); }).join(' | ').slice(0, 1500));
     if (Array.isArray(it.voiceMarks) && it.voiceMarks.length) out.push('spoken timeline (same clock): ' + it.voiceMarks.map(function (v) { return Math.round((v.ms || 0) / 1000) + 's "' + (v.t || '') + '"'; }).join(' | ').slice(0, 1500));
-    if (it.screenshot) out.push('screenshot to Read: ' + path.join(WORKDIR, it.screenshot));
-    if (it.recording) out.push('recording (' + (it.secs || '?') + 's) — extract frames then Read: ' + path.join(WORKDIR, it.recording));
+    const shot = it.screenshot && artifactPath(it.screenshot);
+    const rec = it.recording && artifactPath(it.recording);
+    if (shot) out.push('screenshot to Read: ' + shot);
+    if (rec) out.push('recording (' + (it.secs || '?') + 's) — extract frames then Read: ' + rec);
     return out.join('\n');
   }
 
-  function dispatch() {
-    if (!st.pending.length || !st.child || st.priming) return;
-    const items = st.pending.splice(0, st.pending.length);
-    st.inFlight = items;
-    setState('busy', items.length + ' note' + (items.length > 1 ? 's' : ''));
-    items.forEach(function (it) { flip(it, 'working', '⚡ agent picked it up…'); });
-    const n = items.length;
-    const msg = n + ' new feedback note' + (n > 1 ? 's' : '') + ' from the browser:\n\n'
-      + items.map(function (it, i) { return itemMd(it, i, n); }).join('\n\n')
-      + '\n\nApply the change' + (n > 1 ? 's' : '') + ' to ' + HTML + ' now. Your final message = the reply shown in the browser (one short sentence' + (n > 1 ? ' per note' : '') + ').';
-    send(msg);
+  function dispatch() { // one note per turn: each gets its own status flips + its own reply
+    if (!st.pending.length || !st.child || st.priming || st.inFlight.length) return;
+    const item = st.pending.shift();
+    st.inFlight = [item];
+    setState('busy', String(item.text || '').slice(0, 40));
+    flip(item, 'working', '⚡ agent picked it up…');
+    send('New feedback note from the browser:\n\n' + itemMd(item)
+      + '\n\nApply the change to ' + HTML + ' now. Your final message = the reply shown in the browser (one short sentence).');
   }
 
   function onFeedback(item) {
