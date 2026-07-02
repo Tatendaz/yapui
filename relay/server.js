@@ -92,20 +92,28 @@ const agent = agentMod.create({
 
 function newId() { return 'srv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function canonId(id) { return String(id || '').slice(0, 64); } // ONE id format everywhere — task recs, status recs, agent flips
+// the agent has no shell — pre-extract a recording's contact sheet here (fixed args, workdir-contained paths)
+function extractFrames(item) {
+  if (!item.recording) return Promise.resolve();
+  return new Promise(function (resolve) {
+    const framesRel = item.recording + '.frames.png';
+    let child;
+    try { child = spawn('ffmpeg', ['-y', '-i', path.join(WORKDIR, item.recording), '-vf', 'fps=4,scale=400:-1,tile=8x8', '-frames:v', '1', path.join(WORKDIR, framesRel)], { stdio: 'ignore' }); }
+    catch (e) { return resolve(); } // no ffmpeg → agent goes by the note text
+    const t = setTimeout(function () { try { child.kill('SIGKILL'); } catch (e) {} }, 20000);
+    child.on('error', function () { clearTimeout(t); resolve(); });
+    child.on('close', function (code) {
+      clearTimeout(t);
+      if (code === 0 && fs.existsSync(path.join(WORKDIR, framesRel))) item.frames = framesRel;
+      resolve();
+    });
+  });
+}
+let handoffChain = Promise.resolve(); // notes reach the agent strictly in arrival (line) order, even when one waits on ffmpeg
 function handoff(item) { // → resident agent; falls through silently in watcher mode
   item.taskId = canonId(item.taskId);
   ensureTask(item.taskId, item.text || item.note || (item.element ? 'element ' + (item.element.id || item.element.tag) : (item.recording ? 'clip' : item.screenshot ? 'screenshot' : '(no note)')), item.screen);
-  if (!item.recording) return void agent.onFeedback(item);
-  // the agent has no shell — pre-extract a contact sheet here (fixed args, workdir-contained paths), then hand off
-  const framesRel = item.recording + '.frames.png';
-  const child = spawn('ffmpeg', ['-y', '-i', path.join(WORKDIR, item.recording), '-vf', 'fps=4,scale=400:-1,tile=8x8', '-frames:v', '1', path.join(WORKDIR, framesRel)], { stdio: 'ignore' });
-  const t = setTimeout(function () { try { child.kill('SIGKILL'); } catch (e) {} }, 20000);
-  child.on('error', function () { clearTimeout(t); agent.onFeedback(item); }); // no ffmpeg → agent goes by the note text
-  child.on('close', function (code) {
-    clearTimeout(t);
-    if (code === 0 && fs.existsSync(path.join(WORKDIR, framesRel))) item.frames = framesRel;
-    agent.onFeedback(item);
-  });
+  handoffChain = handoffChain.then(function () { return extractFrames(item); }).then(function () { agent.onFeedback(item); });
 }
 
 function inject(html) {

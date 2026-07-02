@@ -21,9 +21,9 @@
 
 ## Decisions
 
-- **One resident agent, not a pool** — parallel agents editing one HTML file would conflict; a single hot agent with honest queueing ("⏳ agent is finishing the previous fix…") plus coalescing gives the speed without write races, and its session context makes follow-up notes ("make that one blue too") resolve correctly.
+- **One resident agent, not a pool** — parallel agents editing one HTML file would conflict; a single hot agent with honest queueing ("⏳ agent is finishing the previous fix…") plus strict one-note-per-turn queueing gives the speed without write races, and its session context makes follow-up notes ("make that one blue too") resolve correctly.
 - **Persistent stdin-fed process over per-note spawns** — spawning `claude -p` per note costs a cold boot each time; one long-lived stream-json process is hot for every note. Recycling caps context growth.
 - **SSE over WebSockets** — one-directional push is all the widget needs; SSE is plain HTTP, auto-reconnects, zero dependencies.
-- **Relay flips statuses from agent lifecycle events** — the agent needs no side-channel tools (no curl, no flip-status), which keeps its permission surface tiny: `acceptEdits` + `Read,Edit,Write,MultiEdit,Grep,Glob,Bash(ffmpeg:*)`.
-- **`sonnet` as default model** — best speed/quality balance for live HTML edits; `YAP_AGENT_MODEL=haiku` documented for maximum speed.
+- **Relay flips statuses from agent lifecycle events** — the agent needs no side-channel tools (no curl, no flip-status), which keeps its permission surface tiny: `acceptEdits` + `Read,Edit,Write,MultiEdit,Grep,Glob` — no shell; the relay pre-extracts recording frames itself.
+- **`sonnet` as default model** — best speed/quality balance for live HTML edits; `sonnet` also benchmarked faster than `haiku` end-to-end (4.3s vs 6.5s).
 - **Graceful fallback kept** — no `claude` on PATH or `YAP_AGENT=off` reverts to the original watcher flow, now also SSE-pushed.
