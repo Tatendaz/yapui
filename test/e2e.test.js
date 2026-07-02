@@ -38,9 +38,9 @@ function freePort() {
     s.on('error', reject);
   });
 }
-function get(port, p) {
+function get(port, p, headers) {
   return new Promise(function (resolve, reject) {
-    const req = http.get({ host: '127.0.0.1', port: port, path: p, timeout: 4000 }, function (res) {
+    const req = http.get({ host: '127.0.0.1', port: port, path: p, timeout: 4000, headers: headers || {} }, function (res) {
       let b = ''; res.on('data', function (c) { b += c; }); res.on('end', function () { resolve({ status: res.statusCode, body: b }); });
     });
     req.on('timeout', function () { req.destroy(new Error('timeout')); });
@@ -150,6 +150,7 @@ async function testFallbackMode() {
   ok((await get(port, '/.yapui/feedback.jsonl')).status === 404, 'workdir artifacts are not served');
   const evil = await post(port, '/feedback', { text: 'evil', taskId: 'x1' }, { Origin: 'https://evil.example' });
   ok(evil.status === 403, 'cross-origin POSTs are rejected');
+  ok((await get(port, '/', { Host: 'evil.example' })).status === 403, 'DNS-rebinding Host headers are rejected');
   const good = await post(port, '/feedback', { text: 'good origin', taskId: 'x2' }, { Origin: 'http://localhost:' + port });
   ok(good.status === 200, 'same-origin POSTs still pass');
 }

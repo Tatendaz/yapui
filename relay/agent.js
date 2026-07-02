@@ -99,6 +99,7 @@ function create(opts) {
     catch (e) { return bootFailed('spawn: ' + e.message); }
     st.child = child; st.buf = ''; st.results = 0; st.lastActivity = Date.now();
     child.on('error', function (e) { if (st.child === child) bootFailed(e.code === 'ENOENT' ? '`' + BIN + '` not found on PATH' : e.message); });
+    child.stdin.on('error', function (e) { log('stdin: ' + e.message); }); // EPIPE on a dying child must not take the relay down
     child.stdout.on('data', function (d) { if (st.child !== child) return; st.lastActivity = Date.now(); st.buf += d; drain(); });
     child.stderr.on('data', function (d) { const s = String(d).trim(); if (s) log('stderr: ' + s.slice(0, 400)); });
     child.on('close', function (code) { if (st.child === child) onExit(code); }); // a recycled/replaced child's exit must not touch the live one
@@ -143,8 +144,10 @@ function create(opts) {
 
   /* ---- stream-json plumbing ---- */
   function send(text) {
-    if (!st.child) return;
-    st.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: text }] } }) + '\n');
+    const c = st.child;
+    if (!c || c.killed || !c.stdin || !c.stdin.writable) return;
+    try { c.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: text }] } }) + '\n'); }
+    catch (e) { log('stdin write failed: ' + e.message); } // child died between checks — its close handler recovers the turn
   }
 
   function drain() {
@@ -270,8 +273,9 @@ function create(opts) {
     if (c) { try { c.stdin.end(); } catch (e) {} try { c.kill(); } catch (e) {} }
   }
   setInterval(function () {
-    if (st.state === 'busy' && st.child && Date.now() - st.lastActivity > TIMEOUT_MS) {
-      log('agent silent for ' + Math.round(TIMEOUT_MS / 1000) + 's mid-turn — restarting it');
+    // a hung TURN (busy) and a hung BOOT/PRIME (booting) both need the kick — a stalled prime would otherwise stick forever
+    if ((st.state === 'busy' || st.state === 'booting') && st.child && Date.now() - st.lastActivity > TIMEOUT_MS) {
+      log('agent silent for ' + Math.round(TIMEOUT_MS / 1000) + 's (' + st.state + ') — restarting it');
       try { st.child.kill('SIGKILL'); } catch (e) {}
     }
   }, 15000).unref();

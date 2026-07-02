@@ -263,7 +263,7 @@
     queueTask(tid, label); postTask(tid, label);
     fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
-      .then(function () { addLog(payload.screen, label, picked ? 'element' : (payload.voice ? 'voice' : null)); clearAll(); flash('Queued ✓'); })
+      .then(function () { addLog(payload.screen, label, picked ? 'element' : (payload.voice ? 'voice' : null)); clearAll(); flash('Queued ✓'); showWorking(); })
       .catch(function () { dismissTask(tid); flash('Send failed — relay down?', true); })  // roll the optimistic card back so it can't sit red forever
       .finally(function () { sendBtn.disabled = false; });
   }
@@ -277,7 +277,7 @@
     queueTask(tid, label); postTask(tid, label);
     fetch(urlPath, { method: 'POST', headers: headers, body: blob })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
-      .then(function () { addLog(screen, label, kindLabel); clearAll(); flash(kindLabel + ' queued ✓'); })
+      .then(function () { addLog(screen, label, kindLabel); clearAll(); flash(kindLabel + ' queued ✓'); showWorking(); })
       .catch(function () { dismissTask(tid); flash('Upload failed — relay down?', true); })
       .finally(function () { sendBtn.disabled = false; });
   }

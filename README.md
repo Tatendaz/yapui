@@ -2,9 +2,9 @@
 
 # 🗣️ YapUI
 
-### Yap at your UI. Watch Claude rebuild it live.
+## Yap at your UI. Watch Claude rebuild it live.
 
-Preview any HTML in your browser and give feedback by **talking, pointing, recording, screenshotting, or typing** — [Claude Code](https://claude.com/claude-code) picks it up in real time, fixes it, and replies right in the page. You never go back to the terminal.
+Preview any HTML in your browser and give feedback by **talking, pointing, recording, screenshotting, or typing** — a resident [Claude Code](https://claude.com/claude-code) agent picks it up the instant you hit send, fixes it, and replies right in the page. In instant mode you never go back to the terminal.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg)](LICENSE)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-d97757.svg)](https://code.claude.com/docs/en/skills)

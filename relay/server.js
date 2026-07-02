@@ -107,6 +107,12 @@ function originOk(req) {
   try { const u = new URL(o); return (u.hostname === 'localhost' || u.hostname === '127.0.0.1') && String(u.port || (u.protocol === 'http:' ? 80 : 443)) === String(PORT); }
   catch (e) { return false; }
 }
+// and DNS rebinding (evil.example resolving to 127.0.0.1) must not reach ANY route, GETs included —
+// the browser's same-origin wall doesn't help when the attacker's hostname resolves here, so pin the Host header
+function hostOk(req) {
+  const h = String(req.headers.host || '');
+  return h === 'localhost:' + PORT || h === '127.0.0.1:' + PORT || h === '[::1]:' + PORT;
+}
 function guarded(res, fn) { // req 'end' callbacks run outside the request try/catch — a throw here must 500, not crash the relay
   return function () { try { fn.apply(null, arguments); } catch (e) { try { res.writeHead(500); res.end('{"ok":false}'); } catch (e2) {} } };
 }
@@ -138,6 +144,7 @@ function voiceMd(arr) { if (!Array.isArray(arr) || !arr.length) return ''; var o
 const server = http.createServer(function (req, res) {
   try {
     const url = (req.url || '/').split('?')[0];
+    if (!hostOk(req)) { res.writeHead(403); return res.end('{"ok":false,"error":"bad host"}'); }
     if (req.method === 'POST' && !originOk(req)) { res.writeHead(403); return res.end('{"ok":false,"error":"cross-origin"}'); }
 
     if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
