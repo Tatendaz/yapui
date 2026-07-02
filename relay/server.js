@@ -56,7 +56,7 @@ const knownTasks = new Set();
 tasksText().split('\n').filter(Boolean).forEach(function (l) { try { const o = JSON.parse(l); if (o.type === 'task') knownTasks.add(o.id); } catch (e) {} });
 function appendTask(rec) { fs.appendFileSync(TASKS, JSON.stringify(rec) + '\n'); pushTasks(); }
 function ensureTask(id, text, screen) {
-  id = String(id || '').slice(0, 64); // canonicalize exactly like appendTask writes it, so dedup matches the file
+  id = String(id || '').slice(0, 64); // canonicalize exactly like appendTask writes it, so dedup matches the file (see canonId)
   if (!id || knownTasks.has(id)) return;
   knownTasks.add(id);
   appendTask({ type: 'task', id: id, text: (text || '(no note)').toString().slice(0, 2000), screen: (screen || 'page').toString().slice(0, 200), status: 'queued', ts: new Date().toISOString() });
@@ -90,7 +90,9 @@ const agent = agentMod.create({
 });
 
 function newId() { return 'srv' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function canonId(id) { return String(id || '').slice(0, 64); } // ONE id format everywhere — task recs, status recs, agent flips
 function handoff(item) { // → resident agent; falls through silently in watcher mode
+  item.taskId = canonId(item.taskId);
   ensureTask(item.taskId, item.text || item.note || (item.element ? 'element ' + (item.element.id || item.element.tag) : (item.recording ? 'clip' : item.screenshot ? 'screenshot' : '(no note)')), item.screen);
   agent.onFeedback(item);
 }
@@ -117,16 +119,20 @@ function guarded(res, fn) { // req 'end' callbacks run outside the request try/c
   return function () { try { fn.apply(null, arguments); } catch (e) { try { res.writeHead(500); res.end('{"ok":false}'); } catch (e2) {} } };
 }
 const HTML_DIR = path.dirname(path.resolve(HTML_FILE));
+let HTML_DIR_REAL = HTML_DIR; try { HTML_DIR_REAL = fs.realpathSync(HTML_DIR); } catch (e) {}
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.mjs': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json' };
 function serveSibling(url, res) { // css/js/images referenced by the HTML live next to it — serve them, never anything outside
   let rel; try { rel = decodeURIComponent(url).replace(/^\/+/, ''); } catch (e) { return false; }
   if (!rel || rel.indexOf('\0') !== -1 || rel.split('/').some(function (seg) { return seg === '..' || seg[0] === '.'; })) return false;
   const abs = path.resolve(HTML_DIR, rel);
   if (!(abs + path.sep).startsWith(HTML_DIR + path.sep)) return false;
-  let st; try { st = fs.statSync(abs); } catch (e) { return false; }
+  // resolve symlinks before serving — a link inside HTML_DIR must not smuggle out a file from beyond it
+  let real; try { real = fs.realpathSync(abs); } catch (e) { return false; }
+  if (!(real + path.sep).startsWith(HTML_DIR_REAL + path.sep)) return false;
+  let st; try { st = fs.statSync(real); } catch (e) { return false; }
   if (!st.isFile()) return false;
   res.writeHead(200, { 'Content-Type': MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-  res.end(fs.readFileSync(abs));
+  res.end(fs.readFileSync(real));
   return true;
 }
 function appendMd(s) { fs.appendFileSync(FB_MD, s); }
@@ -135,7 +141,6 @@ function elementMd(el) {
   var r = el.rect ? ('  ·  [' + el.rect.x + ',' + el.rect.y + ' ' + el.rect.w + '×' + el.rect.h + ']') : '';
   return '\n**element:** `' + el.selector + '`' + (el.text ? ' — "' + el.text + '"' : '') + r + '\n';
 }
-function b64(h) { try { return h ? Buffer.from(h, 'base64').toString('utf8') : ''; } catch (e) { return ''; } }
 function cursorMd(c) { if (!c || !c.desc) return ''; return '\n**pointing at (at send):** `' + String(c.desc).slice(0, 200) + '`\n'; }
 function fmtMs(ms) { var s = Math.floor((+ms || 0) / 1000); return Math.floor(s / 60) + ':' + ((s % 60) < 10 ? '0' : '') + (s % 60); }
 function pointingMd(arr) { if (!Array.isArray(arr) || !arr.length) return ''; var o = '\n**pointing timeline during message:**\n'; arr.slice(0, 60).forEach(function (p) { o += '- ' + fmtMs(p.ms) + '  ' + String(p.desc || '').slice(0, 120) + '\n'; }); return o; }
@@ -235,55 +240,39 @@ const server = http.createServer(function (req, res) {
         fb.ts = fb.ts || new Date().toISOString();
         fb.screen = (fb.screen || 'page').toString().slice(0, 200);
         fb.text = (fb.text || '').toString().slice(0, 5000);
-        if (!fb.text.trim() && !fb.element) { res.writeHead(400); return res.end('{"ok":false}'); }
+        // media refs (uploaded first via /upload or /shot) ride along in the JSON body — workdir-relative only
+        const mediaRe = /^(recordings|screenshots)\/[\w][\w.-]*$/;
+        fb.recording = (typeof fb.recording === 'string' && mediaRe.test(fb.recording)) ? fb.recording : null;
+        fb.screenshot = (typeof fb.screenshot === 'string' && mediaRe.test(fb.screenshot)) ? fb.screenshot : null;
+        if (!fb.text.trim() && !fb.element && !fb.recording && !fb.screenshot) { res.writeHead(400); return res.end('{"ok":false}'); }
         fs.appendFileSync(FB_JSONL, JSON.stringify(fb) + '\n'); fbLines++;
-        appendMd('\n---\n**' + new Date(fb.ts).toLocaleString() + '**  ·  ' + fb.screen + (fb.voice ? '  ·  🎙 (talk)' : '') + '\n\n'
-          + (fb.text.trim() ? '> ' + fb.text.replace(/\n/g, '\n> ') + '\n' : '') + elementMd(fb.element) + cursorMd(fb.cursor) + pointingMd(fb.pointing) + voiceMd(fb.voiceMarks));
-        process.stdout.write('[feedback] ' + fb.screen + ' :: ' + fb.text.replace(/\n/g, ' ') + (fb.element ? ' {el:' + fb.element.selector + '}' : '') + '\n');
-        handoff({ taskId: fb.taskId || newId(), line: fbLines, text: fb.text.trim(), screen: fb.screen, voice: !!fb.voice, element: fb.element || null, cursor: fb.cursor || null, pointing: fb.pointing || null, voiceMarks: fb.voiceMarks || null });
+        appendMd('\n---\n**' + new Date(fb.ts).toLocaleString() + '**  ·  ' + fb.screen + (fb.voice ? '  ·  🎙 (talk)' : '')
+          + (fb.recording ? '  ·  (recording · ' + (fb.secs || '?') + 's)' : '') + (fb.screenshot ? '  ·  (screenshot)' : '') + '\n\n'
+          + (fb.text.trim() ? '> ' + fb.text.replace(/\n/g, '\n> ') + '\n' : '') + elementMd(fb.element) + cursorMd(fb.cursor) + pointingMd(fb.pointing) + voiceMd(fb.voiceMarks)
+          + (fb.recording ? '\nrecording: `' + fb.recording + '`\n' : '') + (fb.screenshot ? '\nscreenshot: `' + fb.screenshot + '`\n' : ''));
+        process.stdout.write('[feedback] ' + fb.screen + ' :: ' + fb.text.replace(/\n/g, ' ') + (fb.element ? ' {el:' + fb.element.selector + '}' : '') + (fb.recording ? ' {rec}' : '') + (fb.screenshot ? ' {shot}' : '') + '\n');
+        handoff({ taskId: fb.taskId || newId(), line: fbLines, text: fb.text.trim(), screen: fb.screen, voice: !!fb.voice, element: fb.element || null, cursor: fb.cursor || null, pointing: fb.pointing || null, voiceMarks: fb.voiceMarks || null, recording: fb.recording, screenshot: fb.screenshot, secs: fb.secs });
         res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}');
       }));
       return;
     }
 
-    if (req.method === 'POST' && url === '/upload') {
+    // binary saves only — the note/element/cursor metadata follows as a normal JSON /feedback
+    // carrying the returned file ref (headers have hard size limits; bodies don't)
+    if (req.method === 'POST' && (url === '/upload' || url === '/shot')) {
+      const isClip = url === '/upload';
       const chunks = []; let size = 0;
-      req.on('data', function (c) { chunks.push(c); size += c.length; if (size > 200e6) req.destroy(); });
+      req.on('data', function (c) { chunks.push(c); size += c.length; if (size > (isClip ? 200e6 : 50e6)) req.destroy(); });
       req.on('end', function () {
         try {
-          if (!fs.existsSync(REC_DIR)) fs.mkdirSync(REC_DIR, { recursive: true });
-          const buf = Buffer.concat(chunks); const name = 'clip-' + new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6) + '.webm';
-          fs.writeFileSync(path.join(REC_DIR, name), buf);
-          const note = b64(req.headers['x-note']); const screen = req.headers['x-screen'] ? decodeURIComponent(req.headers['x-screen']) : 'page'; const secs = req.headers['x-secs'] || '?';
-          const cur = b64(req.headers['x-cursor']); let pts = []; try { pts = JSON.parse(b64(req.headers['x-pointing']) || '[]'); } catch (e) {}
-          appendMd('\n---\n**' + new Date().toLocaleString() + '**  ·  ' + screen + '  ·  (recording · ' + secs + 's · ' + Math.round(buf.length / 1024) + ' KB)\n\n'
-            + (note ? '> ' + note.replace(/\n/g, '\n> ') + '\n\n' : '') + 'recording: `recordings/' + name + '`\n' + cursorMd({ desc: cur }) + pointingMd(pts));
-          fs.appendFileSync(FB_JSONL, JSON.stringify({ ts: new Date().toISOString(), screen: screen, recording: 'recordings/' + name, note: note, secs: secs, task: (req.headers['x-task'] || ''), cursor: cur, pointing: pts }) + '\n'); fbLines++;
-          process.stdout.write('[recording] ' + name + '\n');
-          handoff({ taskId: String(req.headers['x-task'] || '') || newId(), line: fbLines, text: note, screen: screen, recording: 'recordings/' + name, secs: secs, cursor: cur ? { desc: cur } : null, pointing: pts });
-          res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, file: 'recordings/' + name }));
-        } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message })); }
-      });
-      return;
-    }
-
-    if (req.method === 'POST' && url === '/shot') {
-      const chunks = []; let size = 0;
-      req.on('data', function (c) { chunks.push(c); size += c.length; if (size > 50e6) req.destroy(); });
-      req.on('end', function () {
-        try {
-          if (!fs.existsSync(SHOT_DIR)) fs.mkdirSync(SHOT_DIR, { recursive: true });
-          const buf = Buffer.concat(chunks); const name = 'shot-' + new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6) + '.png';
-          fs.writeFileSync(path.join(SHOT_DIR, name), buf);
-          const note = b64(req.headers['x-note']); const screen = req.headers['x-screen'] ? decodeURIComponent(req.headers['x-screen']) : 'page';
-          let element = null; try { if (req.headers['x-element']) element = JSON.parse(b64(req.headers['x-element'])); } catch (e) {}
-          const cur = b64(req.headers['x-cursor']); let pts = []; try { pts = JSON.parse(b64(req.headers['x-pointing']) || '[]'); } catch (e) {}
-          appendMd('\n---\n**' + new Date().toLocaleString() + '**  ·  ' + screen + '  ·  (screenshot)\n\n'
-            + (note ? '> ' + note.replace(/\n/g, '\n> ') + '\n' : '') + elementMd(element) + cursorMd({ desc: cur }) + pointingMd(pts) + '\nscreenshot: `screenshots/' + name + '`\n');
-          fs.appendFileSync(FB_JSONL, JSON.stringify({ ts: new Date().toISOString(), screen: screen, screenshot: 'screenshots/' + name, element: element, note: note, task: (req.headers['x-task'] || ''), cursor: cur, pointing: pts }) + '\n'); fbLines++;
-          process.stdout.write('[screenshot] ' + name + '\n');
-          handoff({ taskId: String(req.headers['x-task'] || '') || newId(), line: fbLines, text: note, screen: screen, screenshot: 'screenshots/' + name, element: element, cursor: cur ? { desc: cur } : null, pointing: pts });
-          res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, file: 'screenshots/' + name }));
+          const dir = isClip ? REC_DIR : SHOT_DIR;
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          const buf = Buffer.concat(chunks);
+          const name = (isClip ? 'clip-' : 'shot-') + new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6) + (isClip ? '.webm' : '.png');
+          fs.writeFileSync(path.join(dir, name), buf);
+          const file = (isClip ? 'recordings/' : 'screenshots/') + name;
+          process.stdout.write('[' + (isClip ? 'recording' : 'screenshot') + '] ' + name + ' (' + Math.round(buf.length / 1024) + ' KB)\n');
+          res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, file: file }));
         } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message })); }
       });
       return;

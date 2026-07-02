@@ -40,7 +40,7 @@ Target HTML = **$HTML** (absolute path).
 - Notes sent while the agent is busy queue honestly ("⏳ agent is finishing the previous fix…") and dispatch the moment it frees up. The agent keeps session context, so "make **that** bigger too" works across notes.
 - If the agent can't action a note it replies `NEEDS-YOU: …` → the card flips 🙋 and blocks auto-refresh; the user answers by sending another note.
 - **Your role in the terminal: nothing.** Don't watch files, don't flip statuses. Stay available for direct questions. If the user asks you to change the page directly, just edit $HTML — the agent re-reads it on its next note.
-- Env knobs (set on the relay): `YAP_AGENT=off` (disable), `YAP_AGENT_MODEL` (default `sonnet`; `haiku` = fastest), `YAP_CLAUDE_BIN`, `YAP_AGENT_RECYCLE` (turns before recycling, default 30), `YAP_AGENT_TIMEOUT` (hung-turn kill, default 240s). The agent runs `--permission-mode acceptEdits` limited to `Read,Edit,Write,MultiEdit,Grep,Glob,Bash(ffmpeg:*)` in the HTML's directory.
+- Env knobs (set on the relay): `YAP_AGENT=off` (disable), `YAP_AGENT_MODEL` (default `sonnet` — it also benchmarked faster end-to-end than `haiku` here), `YAP_CLAUDE_BIN`, `YAP_AGENT_RECYCLE` (turns before recycling, default 30), `YAP_AGENT_TIMEOUT` (hung-turn kill, default 240s). The agent runs `--permission-mode acceptEdits` limited to `Read,Edit,Write,MultiEdit,Grep,Glob,Bash(ffmpeg:*)` in the HTML's directory.
 - If the agent dies 3× it flips remaining cards back to 🔴 and `/agent` reports `"dead"` → treat as watcher fallback from then on.
 
 ## Watcher fallback (only when `/agent` says `off` / `dead`)

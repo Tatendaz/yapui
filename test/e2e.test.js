@@ -151,6 +151,18 @@ async function testFallbackMode() {
   const evil = await post(port, '/feedback', { text: 'evil', taskId: 'x1' }, { Origin: 'https://evil.example' });
   ok(evil.status === 403, 'cross-origin POSTs are rejected');
   ok((await get(port, '/', { Host: 'evil.example' })).status === 403, 'DNS-rebinding Host headers are rejected');
+
+  const up = await post(port, '/upload', Buffer.from('fake-webm-bytes').toString(), { 'Content-Type': 'application/octet-stream' });
+  const upFile = JSON.parse(up.body).file;
+  ok(up.status === 200 && /^recordings\/clip-.+\.webm$/.test(upFile), 'binary upload returns a workdir-relative file ref');
+  const fbMedia = await post(port, '/feedback', { text: 'clip note', taskId: 'm2', recording: upFile, secs: 3 });
+  ok(fbMedia.status === 200, 'media metadata rides in the JSON note (no headers)');
+  ok(fs.readFileSync(path.join(r.wd, 'feedback.jsonl'), 'utf8').indexOf(upFile) !== -1, 'recording ref lands in feedback.jsonl');
+  ok((await post(port, '/feedback', { recording: '../../etc/passwd' })).status === 400, 'traversal media refs are rejected');
+  const longId = 'L'.repeat(90);
+  await post(port, '/feedback', { text: 'long id note', taskId: longId });
+  const tasks3 = await waitFor(function () { return get(port, '/tasks').then(function (x) { return x.body.indexOf('long id note') !== -1 ? x.body : null; }); }, 'long-id task visible');
+  ok(tasks3.indexOf('"id":"' + longId.slice(0, 64) + '"') !== -1, 'task ids are canonicalized to 64 chars');
   const good = await post(port, '/feedback', { text: 'good origin', taskId: 'x2' }, { Origin: 'http://localhost:' + port });
   ok(good.status === 200, 'same-origin POSTs still pass');
 }

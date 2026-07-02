@@ -181,13 +181,14 @@
 
   /* ---- element picker ---- */
   var picking = false, picked = null;
+  function cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, function (c) { return '\\' + c; }); }
   function cssPath(el) {
     var parts = [], node = el, depth = 0;
     while (node && node.nodeType === 1 && depth < 5) {
-      if (node.id) { parts.unshift('#' + node.id); break; }
+      if (node.id) { parts.unshift('#' + cssEsc(node.id)); break; }
       var seg = node.tagName.toLowerCase();
       var cn = typeof node.className === 'string' ? node.className : (node.className && node.className.baseVal) || '';
-      var cls = cn.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+      var cls = cn.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(cssEsc);
       if (cls.length) seg += '.' + cls.join('.');
       var p = node.parentNode;
       if (p && p.children) { var same = [].filter.call(p.children, function (c) { return c.tagName === node.tagName; }); if (same.length > 1) seg += ':nth-of-type(' + (1 + same.indexOf(node)) + ')'; }
@@ -233,7 +234,7 @@
 
   /* ---- screenshot (html2canvas, lazy) ---- */
   var shotBlob = null;
-  function loadH2C() { return new Promise(function (res, rej) { if (window.html2canvas) return res(); var s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'; s.onload = function () { res(); }; s.onerror = function () { rej(); }; document.head.appendChild(s); }); }
+  function loadH2C() { return new Promise(function (res, rej) { if (window.html2canvas) return res(); var s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'; s.integrity = 'sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H'; s.crossOrigin = 'anonymous'; s.onload = function () { res(); }; s.onerror = function () { rej(); }; document.head.appendChild(s); }); }
   function snap() {
     var target = null;
     if (picked) { try { target = document.querySelector(picked.selector); } catch (e) {} }
@@ -251,8 +252,7 @@
 
   /* ---- send ---- */
   function addLog(screen, text, kind) { var d = document.createElement('div'); d.className = 'kfb-item'; d.innerHTML = '<span class="s">' + esc(screen) + (kind ? ' · ' + kind : '') + '</span>' + esc(text || '(no note)'); log.insertBefore(d, log.firstChild); }
-  function b64(s) { try { return btoa(unescape(encodeURIComponent(s))); } catch (e) { return ''; } }
-  function clearAll() { ta.value = ''; base = ''; usedVoice = false; voiceMarks = []; lastTranscript = ''; picked = null; renderPicked(); recBlob = null; clipBox.classList.remove('show'); freeUrl(video); video.src = ''; shotBlob = null; shotBox.classList.remove('show'); freeUrl(shotImg); shotImg.src = ''; composeStart = Date.now(); try { localStorage.removeItem('kfb-draft'); } catch (e) {} }
+  function clearAll() { if (listening) { listening = false; setMic(false); try { rec.stop(); } catch (e) {} } ta.value = ''; base = ''; usedVoice = false; voiceMarks = []; lastTranscript = ''; picked = null; renderPicked(); recBlob = null; clipBox.classList.remove('show'); freeUrl(video); video.src = ''; shotBlob = null; shotBox.classList.remove('show'); freeUrl(shotImg); shotImg.src = ''; composeStart = Date.now(); try { localStorage.removeItem('kfb-draft'); } catch (e) {} }
 
   function sendText() {
     var text = ta.value.trim();
@@ -268,14 +268,22 @@
       .finally(function () { sendBtn.disabled = false; });
   }
   function sendBinary(urlPath, blob, kindLabel) {
+    // two-step: upload the raw bytes, then send the metadata as a normal JSON note
+    // (headers have hard size limits — long pointing/voice timelines don't)
     var note = ta.value.trim(), screen = currentScreen();
     var tid = newTaskId(), label = note || kindLabel;
     sendBtn.disabled = true; flash('Uploading ' + kindLabel + '…');
     var ptStart = (urlPath === '/upload') ? (Date.now() - (recSecs * 1000 || 0)) : composeStart;
-    var headers = { 'Content-Type': 'application/octet-stream', 'X-Screen': encodeURIComponent(screen), 'X-Note': b64(note), 'X-Secs': String(recSecs), 'X-Task': tid, 'X-Cursor': b64(cursor.desc || ''), 'X-Pointing': b64(JSON.stringify(trailSince(ptStart).slice(-40))) };
-    if (picked) headers['X-Element'] = b64(JSON.stringify(picked));
     queueTask(tid, label); postTask(tid, label);
-    fetch(urlPath, { method: 'POST', headers: headers, body: blob })
+    fetch(urlPath, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (up) {
+        var payload = { text: note, screen: screen, ts: new Date().toISOString(), taskId: tid, voice: usedVoice || listening, secs: recSecs,
+          cursor: cursor.desc ? { desc: cursor.desc, label: cursor.phone, scene: cursor.scene, el: cursor.el } : null,
+          pointing: trailSince(ptStart).slice(-40), voiceMarks: voiceMarks.length ? voiceMarks.slice() : null, element: picked || null };
+        payload[urlPath === '/upload' ? 'recording' : 'screenshot'] = up.file;
+        return fetch('/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
       .then(function () { addLog(screen, label, kindLabel); clearAll(); flash(kindLabel + ' queued ✓'); showWorking(); })
       .catch(function () { dismissTask(tid); flash('Upload failed — relay down?', true); })
@@ -466,6 +474,7 @@
   function showWorking() { workSince = Date.now(); hideWatching(); repToast.style.display = 'none'; workPill.style.display = 'flex'; launch.style.boxShadow = '0 0 0 4px rgba(14,140,126,.35), 0 8px 22px rgba(11,111,100,.42)'; }
   function hideWorking() { workPill.style.display = 'none'; launch.style.boxShadow = ''; workSince = 0; showWatching(); }
   workPill.onclick = hideWorking;
+  setInterval(function () { if (workSince && Date.now() - workSince > 180000) hideWorking(); }, 10000); // stale guard must not depend on the polling fallback
 
   var repSeen = -1;
   var repToast = document.createElement('div'); repToast.id = 'kfb-reply';
