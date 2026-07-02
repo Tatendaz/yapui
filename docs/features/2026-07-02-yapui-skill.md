@@ -16,6 +16,7 @@ The original loop had dead air baked in: a shell watcher polled `feedback.jsonl`
 - **`SKILL.md`** — launch flow now checks `GET /agent`: instant mode needs no watcher (the main session stays free); the classic watcher flow is preserved as an explicit fallback section.
 - **Tests (new)** — `npm test` runs the full loop deterministically against `test/fake-claude.js`, a stand-in that speaks the real stream-json protocol; no API calls.
 - Agent sandbox: `--permission-mode acceptEdits`, tools limited to `Read,Edit,Write,MultiEdit,Grep,Glob,Bash(ffmpeg:*)`, cwd pinned to the served HTML's directory, MCP servers disabled for fast boot.
+- **Hardening round (same PR)** — one note per agent turn (per-note statuses + replies), stale child-process events ignored after recycling, queued cards drained if the agent dies, artifact paths clamped to the workdir; relay rejects cross-origin POSTs and serves sibling assets (css/js/images) with traversal/dotfile/workdir blocking; widget element-picker highlight fixed (duplicate hoisted handler), correct `:nth-of-type`, blob-URL cleanup, optimistic-card rollback on failed sends.
 
 ## Notes
 - Backward compatible: without the `claude` CLI on PATH (or with `YAP_AGENT=off`) everything behaves as before, and even then flips/replies now push over SSE instead of polls.
