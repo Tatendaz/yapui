@@ -1,0 +1,274 @@
+// Resident fix agent — a pre-warmed headless `claude` process that lives next
+// to the relay and applies feedback the moment it arrives. No polling, no
+// terminal round-trip: the relay pipes each note into the agent's stdin
+// (stream-json), streams its tool activity back as a live ticker on the task
+// card, and posts its final message as the in-browser reply.
+//
+// Env knobs:
+//   YAP_AGENT          off|0|false → disable (relay falls back to watcher mode)
+//   YAP_AGENT_MODEL    model alias/name for the agent (default: sonnet)
+//   YAP_CLAUDE_BIN     claude binary (default: claude, resolved via PATH)
+//   YAP_AGENT_RECYCLE  results before the agent is recycled while idle (default: 30)
+//   YAP_AGENT_TIMEOUT  seconds of silence mid-turn before the agent is presumed hung (default: 240)
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+function offReason() {
+  const v = String(process.env.YAP_AGENT || '').toLowerCase();
+  return (v === 'off' || v === '0' || v === 'false') ? 'YAP_AGENT=' + v : null;
+}
+
+function create(opts) {
+  const HTML = path.resolve(opts.htmlFile);
+  const HTML_DIR = path.dirname(HTML);
+  const WORKDIR = path.resolve(opts.workdir);
+  const MARK = path.join(WORKDIR, '.fb-processed');
+  const BIN = process.env.YAP_CLAUDE_BIN || 'claude';
+  const MODEL = process.env.YAP_AGENT_MODEL || 'sonnet';
+  const RECYCLE = parseInt(process.env.YAP_AGENT_RECYCLE, 10) || 30;
+  const TIMEOUT_MS = (parseInt(process.env.YAP_AGENT_TIMEOUT, 10) || 240) * 1000;
+  const log = opts.log || function () {};
+  const onTask = opts.onTask;     // ({type:'status',id,status,note,ts}) → task queue + browser
+  const onReply = opts.onReply;   // (text) → claude-replies.jsonl + browser toast
+  const onState = opts.onState || function () {};
+
+  const SYSTEM = [
+    'You are the live-fix agent for an HTML page a user is viewing in their browser right now.',
+    'Each message you receive is feedback they just sent from the page. Your only job: apply the requested change to ' + HTML + ' — fast.',
+    '',
+    'Rules:',
+    '- Edit ' + HTML + ' directly. The page is re-served on refresh; never restart anything. Do not create new files unless the change genuinely needs an asset.',
+    '- Make the smallest correct edit. No refactors, no added comments, no dependencies.',
+    '- The file may be edited by others between notes — if an Edit fails to match, re-Read the file and retry.',
+    '- Feedback artifacts live under ' + WORKDIR + ' — Read any referenced screenshot. For a recording, extract frames first:',
+    '  ffmpeg -y -i <clip> -vf "fps=4,scale=400:-1,tile=8x8" -frames:v 1 ' + path.join(WORKDIR, 'frames.png') + '  — then Read the sheet.',
+    '- Notes may carry an element selector and "pointing at" / spoken-word timelines — use them to resolve "this" / "that" to the real element.',
+    '- Your final message is shown to the user as a chat reply in the browser. One short plain sentence per note (e.g. "Made the hero heading larger."). No markdown, no code blocks.',
+    '- If a note cannot be actioned (a question, missing info), start your final message with exactly "NEEDS-YOU: " followed by the question.'
+  ].join('\n');
+
+  const st = {
+    state: 'off',        // off | booting | ready | busy | dead
+    child: null,
+    priming: false,
+    pending: [],         // feedback items waiting for the agent
+    inFlight: [],        // items included in the current turn
+    results: 0,          // completed turns on the current child (recycle counter)
+    boots: 0,            // consecutive failed boots (give up at 3)
+    lastActivity: 0,
+    lastTicker: '',
+    buf: ''
+  };
+
+  function setState(s, label) {
+    st.state = s;
+    onState(s, label || '');
+    log('state → ' + s + (label ? ' (' + label + ')' : ''));
+  }
+  function status() {
+    return { state: st.state, model: MODEL, pending: st.pending.length, inFlight: st.inFlight.length };
+  }
+
+  const disabled = offReason();
+  if (disabled) { log('disabled (' + disabled + ') — watcher mode'); setState('off', disabled); }
+
+  function flip(item, statusName, note) {
+    if (!item.taskId) return;
+    onTask({ type: 'status', id: item.taskId, status: statusName, note: note || '', ts: new Date().toISOString() });
+  }
+
+  /* ---- boot ---- */
+  function boot() {
+    if (disabled || st.child) return;
+    setState('booting', 'model ' + MODEL);
+    const args = [
+      '-p',
+      '--input-format', 'stream-json',
+      '--output-format', 'stream-json',
+      '--verbose',
+      '--permission-mode', 'acceptEdits',
+      '--allowedTools', 'Read,Edit,Write,MultiEdit,Grep,Glob,Bash(ffmpeg:*)',
+      '--model', MODEL,
+      '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+      '--append-system-prompt', SYSTEM
+    ];
+    if (!(WORKDIR + path.sep).startsWith(HTML_DIR + path.sep)) args.push('--add-dir', WORKDIR);
+    let child;
+    try { child = spawn(BIN, args, { cwd: HTML_DIR, stdio: ['pipe', 'pipe', 'pipe'] }); }
+    catch (e) { return bootFailed('spawn: ' + e.message); }
+    st.child = child; st.buf = ''; st.results = 0; st.lastActivity = Date.now();
+    child.on('error', function (e) { bootFailed(e.code === 'ENOENT' ? '`' + BIN + '` not found on PATH' : e.message); });
+    child.stdout.on('data', function (d) { st.lastActivity = Date.now(); st.buf += d; drain(); });
+    child.stderr.on('data', function (d) { const s = String(d).trim(); if (s) log('stderr: ' + s.slice(0, 400)); });
+    child.on('close', function (code) { onExit(code); });
+    // prime: read the page now so the first real note starts hot
+    st.priming = true;
+    send('Warm-up: Read ' + HTML + ' now and keep its structure in mind so you can act instantly on the next note. Reply with exactly: READY');
+  }
+
+  function bootFailed(msg) {
+    log('agent unavailable — ' + msg);
+    st.child = null;
+    setState('off', msg);
+  }
+
+  function onExit(code) {
+    const wasBusy = st.state === 'busy';
+    log('agent exited (code ' + code + ')' + (wasBusy ? ' mid-turn' : ''));
+    st.child = null;
+    if (st.state === 'off' || st.state === 'dead') return;
+    // put the interrupted turn back; give each item one retry
+    if (wasBusy && st.inFlight.length) {
+      st.inFlight.forEach(function (it) {
+        if (it.retried) flip(it, 'needs-you', 'agent crashed on this — see terminal');
+        else { it.retried = true; st.pending.unshift(it); }
+      });
+      st.inFlight = [];
+    }
+    st.boots++;
+    if (st.boots >= 3) {
+      setState('dead', 'agent kept crashing — watcher mode takes over');
+      st.pending.forEach(function (it) { flip(it, 'queued', 'agent down — handled from the terminal'); });
+      return;
+    }
+    setTimeout(boot, st.boots * 1500);
+  }
+
+  /* ---- stream-json plumbing ---- */
+  function send(text) {
+    if (!st.child) return;
+    st.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: text }] } }) + '\n');
+  }
+
+  function drain() {
+    let ix;
+    while ((ix = st.buf.indexOf('\n')) !== -1) {
+      const line = st.buf.slice(0, ix).trim(); st.buf = st.buf.slice(ix + 1);
+      if (!line) continue;
+      let ev; try { ev = JSON.parse(line); } catch (e) { continue; }
+      handle(ev);
+    }
+  }
+
+  const TICKER = { Read: '📖 reading', Edit: '✏️ editing', MultiEdit: '✏️ editing', Write: '✏️ writing', Grep: '🔎 searching', Glob: '🔎 searching', Bash: '🔧 running' };
+  function tickerFor(tu) {
+    const label = TICKER[tu.name] || '⚙️ ' + tu.name;
+    let target = '';
+    try {
+      const inp = tu.input || {};
+      if (inp.file_path) target = path.basename(inp.file_path);
+      else if (inp.description) target = String(inp.description).slice(0, 48);
+      else if (inp.command) target = String(inp.command).slice(0, 48);
+      else if (inp.pattern) target = String(inp.pattern).slice(0, 32);
+    } catch (e) {}
+    return label + (target ? ' ' + target : '') + '…';
+  }
+
+  function handle(ev) {
+    if (ev.type === 'system' && ev.subtype === 'init') {
+      log('session ' + (ev.session_id || '?') + ' · model ' + (ev.model || MODEL));
+      return;
+    }
+    if (ev.type === 'assistant' && ev.message && Array.isArray(ev.message.content)) {
+      if (st.priming) return;
+      ev.message.content.forEach(function (c) {
+        if (c.type !== 'tool_use') return;
+        const t = tickerFor(c);
+        if (t === st.lastTicker) return;
+        st.lastTicker = t;
+        st.inFlight.forEach(function (it) { flip(it, 'working', t); });
+      });
+      return;
+    }
+    if (ev.type === 'result') {
+      if (st.priming) {
+        st.priming = false; st.boots = 0;
+        setState('ready', 'primed on ' + path.basename(HTML));
+        dispatch();
+        return;
+      }
+      finishTurn(ev);
+    }
+  }
+
+  function finishTurn(ev) {
+    const ok = ev.subtype === 'success';
+    const text = String(ev.result || '').trim();
+    const needsYou = /^NEEDS-YOU:\s*/i.test(text);
+    const reply = needsYou ? text.replace(/^NEEDS-YOU:\s*/i, '') : text;
+    const items = st.inFlight; st.inFlight = []; st.lastTicker = ''; st.results++;
+    if (!ok) {
+      log('turn failed (' + ev.subtype + ')');
+      items.forEach(function (it) { flip(it, 'needs-you', 'agent hit an error (' + ev.subtype + ') — see terminal'); });
+    } else {
+      items.forEach(function (it) { flip(it, needsYou ? 'needs-you' : 'done', needsYou ? reply.slice(0, 160) : ''); });
+      if (reply) onReply(needsYou ? '🙋 ' + reply : reply);
+      const maxLine = Math.max.apply(null, items.map(function (it) { return it.line || 0; }).concat([0]));
+      if (maxLine > 0) { try { fs.writeFileSync(MARK, String(maxLine) + '\n'); } catch (e) {} }
+    }
+    st.boots = 0;
+    if (st.pending.length) { setState('busy'); dispatch(); return; }
+    if (st.results >= RECYCLE) { recycle(); return; }
+    setState('ready');
+  }
+
+  /* ---- feedback in ---- */
+  function itemMd(it, i, n) {
+    const out = ['--- note ' + (i + 1) + '/' + n + ' (task ' + (it.taskId || '?') + ', screen: ' + (it.screen || 'page') + (it.voice ? ', spoken' : '') + ') ---'];
+    if (it.text) out.push('"' + it.text + '"');
+    if (it.element) out.push('element: ' + JSON.stringify(it.element));
+    if (it.cursor && it.cursor.desc) out.push('pointing at (at send): ' + it.cursor.desc);
+    if (Array.isArray(it.pointing) && it.pointing.length) out.push('pointing timeline: ' + it.pointing.map(function (p) { return Math.round((p.ms || 0) / 1000) + 's ' + (p.desc || ''); }).join(' | ').slice(0, 1500));
+    if (Array.isArray(it.voiceMarks) && it.voiceMarks.length) out.push('spoken timeline (same clock): ' + it.voiceMarks.map(function (v) { return Math.round((v.ms || 0) / 1000) + 's "' + (v.t || '') + '"'; }).join(' | ').slice(0, 1500));
+    if (it.screenshot) out.push('screenshot to Read: ' + path.join(WORKDIR, it.screenshot));
+    if (it.recording) out.push('recording (' + (it.secs || '?') + 's) — extract frames then Read: ' + path.join(WORKDIR, it.recording));
+    return out.join('\n');
+  }
+
+  function dispatch() {
+    if (!st.pending.length || !st.child || st.priming) return;
+    const items = st.pending.splice(0, st.pending.length);
+    st.inFlight = items;
+    setState('busy', items.length + ' note' + (items.length > 1 ? 's' : ''));
+    items.forEach(function (it) { flip(it, 'working', '⚡ agent picked it up…'); });
+    const n = items.length;
+    const msg = n + ' new feedback note' + (n > 1 ? 's' : '') + ' from the browser:\n\n'
+      + items.map(function (it, i) { return itemMd(it, i, n); }).join('\n\n')
+      + '\n\nApply the change' + (n > 1 ? 's' : '') + ' to ' + HTML + ' now. Your final message = the reply shown in the browser (one short sentence' + (n > 1 ? ' per note' : '') + ').';
+    send(msg);
+  }
+
+  function onFeedback(item) {
+    if (st.state === 'off' || st.state === 'dead') return false; // watcher mode owns it
+    st.pending.push(item);
+    if (st.state === 'ready') dispatch();
+    else if (st.state === 'busy') flip(item, 'queued', '⏳ agent is finishing the previous fix…');
+    else flip(item, 'queued', '⚡ agent is warming up…');
+    return true;
+  }
+
+  /* ---- lifecycle ---- */
+  function recycle() {
+    log('recycling agent after ' + st.results + ' turns');
+    const old = st.child; st.child = null;
+    if (old) { try { old.stdin.end(); } catch (e) {} setTimeout(function () { try { old.kill('SIGKILL'); } catch (e) {} }, 5000); }
+    boot();
+  }
+  function kill() {
+    st.state = 'off';
+    const c = st.child; st.child = null;
+    if (c) { try { c.stdin.end(); } catch (e) {} try { c.kill(); } catch (e) {} }
+  }
+  setInterval(function () {
+    if (st.state === 'busy' && st.child && Date.now() - st.lastActivity > TIMEOUT_MS) {
+      log('agent silent for ' + Math.round(TIMEOUT_MS / 1000) + 's mid-turn — restarting it');
+      try { st.child.kill('SIGKILL'); } catch (e) {}
+    }
+  }, 15000).unref();
+
+  if (!disabled) boot();
+  return { onFeedback: onFeedback, status: status, kill: kill, enabled: !disabled };
+}
+
+module.exports = { create: create };

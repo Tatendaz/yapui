@@ -2,7 +2,9 @@
    Five ways to tell Claude something, all landing in feedback.md:
      • type a note            • talk (live transcription)
      • record the screen      • screenshot (html2canvas)
-     • pick an element        (its exact identity in the code) */
+     • pick an element        (its exact identity in the code)
+   Live updates arrive over SSE (/events) — task flips, agent activity and
+   replies push instantly; polling only kicks in as a fallback. */
 (function () {
   if (window.__kfb) return; window.__kfb = true;
 
@@ -366,6 +368,8 @@
 
   var ICON = { queued:'🔴', working:'<span class="kfb-dig">⛏️</span>', done:'✅', needs:'🙋' };
   var tasks = {}, order = [], local = {}, dismissedIds = {}, lastSig = null, shownIds = {};
+  var agentState = '', agentLabel = '';
+  function setAgent(state, label) { agentState = state || ''; agentLabel = label || ''; render(); }
   function newTaskId() { return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function normStatus(s) { return (s === 'needs-you' || s === 'needs') ? 'needs' : ((s === 'working' || s === 'done' || s === 'queued') ? s : 'queued'); }
   function hasWorking() { return order.some(function (id) { return tasks[id].status === 'working'; }); }
@@ -400,7 +404,7 @@
   }
 
   function render() {
-    var sig = order.map(function (id) { return id + ':' + tasks[id].status + ':' + (tasks[id].note || ''); }).join('|');
+    var sig = agentState + '§' + order.map(function (id) { return id + ':' + tasks[id].status + ':' + (tasks[id].note || ''); }).join('|');
     if (sig === lastSig) return;   // nothing changed since last render — skip the rebuild (no periodic flashing)
     lastSig = sig;
     qList.innerHTML = '';
@@ -419,7 +423,11 @@
     var done = order.filter(function (id) { return tasks[id].status === 'done'; }).length;
     var needs = order.filter(function (id) { return tasks[id].status === 'needs'; }).length;
     qCount.style.display = order.length ? '' : 'none'; qCount.textContent = done + '/' + order.length;
-    if (!order.length) { qEm.textContent = '👀'; qEm.className = 'em kfb-eyes'; qStxt.textContent = 'Claude is watching'; }
+    if (!order.length) {
+      if (agentState === 'ready' || agentState === 'busy') { qEm.textContent = '⚡'; qEm.className = 'em'; qStxt.textContent = 'Claude is ready — instant fixes'; }
+      else if (agentState === 'booting') { qEm.textContent = '⚡'; qEm.className = 'em kfb-eyes'; qStxt.textContent = 'Claude is warming up…'; }
+      else { qEm.textContent = '👀'; qEm.className = 'em kfb-eyes'; qStxt.textContent = 'Claude is watching'; }
+    }
     else if (hasWorking()) { qEm.innerHTML = '<span class="kfb-dig">⛏️</span>'; qEm.className = 'em'; qStxt.textContent = 'Claude is digging in…'; }
     else if (needs) { qEm.textContent = '🙋'; qEm.className = 'em'; qStxt.textContent = needs === 1 ? '1 needs you' : needs + ' need you'; }
     else if (done === order.length) { qEm.textContent = '✅'; qEm.className = 'em'; qStxt.textContent = 'All done'; }
@@ -448,7 +456,6 @@
   qGo.onclick = doRefresh;
 
   function pollTasks() { fetch('/tasks', { cache: 'no-store' }).then(function (r) { return r.text(); }).then(reduceFile).catch(function () {}); }
-  setInterval(pollTasks, 900); pollTasks();
 
   var workSince = 0;
   function showWorking() { workSince = Date.now(); hideWatching(); repToast.style.display = 'none'; workPill.style.display = 'flex'; launch.style.boxShadow = '0 0 0 4px rgba(14,140,126,.35), 0 8px 22px rgba(11,111,100,.42)'; }
@@ -478,7 +485,6 @@
     }).catch(function () {});
     if (workSince && Date.now() - workSince > 180000) hideWorking(); // stale guard (3 min)
   }
-  setInterval(pollReplies, 2500); pollReplies();
 
   // restore an unsent draft + keep persisting it as you type (survives a reload)
   try { var d0 = localStorage.getItem('kfb-draft'); if (d0) { ta.value = d0; base = d0; } } catch (e) {}
@@ -489,6 +495,33 @@
 
   // self-reload: when the widget or relay changes, reload to pick it up (deferred while you're composing)
   var lastVer = null;
-  function pollVersion() { fetch('/version', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (o) { if (lastVer === null) { lastVer = o.v; return; } if (o.v !== lastVer && !busyComposing()) location.reload(); }).catch(function () {}); }
-  setInterval(pollVersion, 3000); pollVersion();
+  function applyVersion(v) { if (!v) return; if (lastVer === null) { lastVer = v; return; } if (v !== lastVer && !busyComposing()) location.reload(); }
+  function pollVersion() { fetch('/version', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (o) { applyVersion(o.v); }).catch(function () {}); }
+
+  /* ---- live update channel: SSE first (instant), polling only as fallback ---- */
+  var es = null, pollT = [];
+  function startPolling() { if (pollT.length) return; pollT = [setInterval(pollTasks, 1200), setInterval(pollReplies, 2500)]; }
+  function stopPolling() { pollT.forEach(clearInterval); pollT = []; }
+  function connectSSE() {
+    if (!window.EventSource) { startPolling(); return; }
+    try { es = new EventSource('/events'); } catch (e) { startPolling(); return; }
+    es.onopen = function () { stopPolling(); };
+    es.onerror = function () { startPolling(); };   // EventSource retries itself; poll meanwhile
+    es.addEventListener('hello', function (m) { try { var o = JSON.parse(m.data);
+      if (o.agent) setAgent(o.agent.state, o.agent.label);
+      if (typeof o.replies === 'number' && repSeen < 0) repSeen = o.replies;
+      if (typeof o.tasks === 'string') reduceFile(o.tasks);
+      applyVersion(o.v); pollReplies();             // pollReplies catches anything missed during a reconnect
+    } catch (e) {} });
+    es.addEventListener('tasks', function (m) { try { reduceFile(JSON.parse(m.data).text || ''); } catch (e) {} });
+    es.addEventListener('reply', function (m) { try { var o = JSON.parse(m.data);
+      if (typeof o.n === 'number') { if (repSeen >= 0 && o.n <= repSeen) return; repSeen = o.n; }
+      showReply(o.text); addLog('Claude', o.text, 'reply');
+    } catch (e) {} });
+    es.addEventListener('agent', function (m) { try { var o = JSON.parse(m.data); setAgent(o.state, o.label); } catch (e) {} });
+    es.addEventListener('version', function (m) { try { applyVersion(JSON.parse(m.data).v); } catch (e) {} });
+  }
+  connectSSE();
+  pollTasks(); pollReplies();                        // paint once immediately, even before SSE opens
+  setInterval(pollVersion, 3000); pollVersion();     // slow safety net (also retries a reload deferred while composing)
 })();

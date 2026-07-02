@@ -1,14 +1,14 @@
 ---
 name: yapui
 description: >-
-  View, preview, open, render, or serve any HTML file/page/mockup/prototype in the browser with a live two-way feedback loop. Use this whenever the user wants to look at HTML in a browser, see a rendered page, preview a mockup or prototype, or iterate on an HTML UI — instead of a bare `open file.html` (file:// blocks the mic + screen capture and gives no feedback channel). It serves the HTML from a local relay, injects a feedback widget (typed notes, voice dictation, screen recording, screenshots, and click-to-pick element selection), shows an ambient "👀 Claude is watching" indicator plus working/done status, and runs a background watcher so Claude auto-processes feedback the instant it is sent, applies the fix, and replies in the browser. Trigger for ANY request to view / preview / serve / open / render HTML.
+  View, preview, open, render, or serve any HTML file/page/mockup/prototype in the browser with a live two-way feedback loop. Use this whenever the user wants to look at HTML in a browser, see a rendered page, preview a mockup or prototype, or iterate on an HTML UI — instead of a bare `open file.html` (file:// blocks the mic + screen capture and gives no feedback channel). It serves the HTML from a local relay, injects a feedback widget (typed notes, voice dictation, screen recording, screenshots, and click-to-pick element selection), and boots a resident pre-warmed Claude agent that picks up each note the instant it is sent (~0s pickup), applies the fix, streams live "what I'm doing" status to the page, and replies in the browser. Trigger for ANY request to view / preview / serve / open / render HTML.
 ---
 
 # YapUI — HTML Live Preview + Feedback
 
-Turns "open this HTML" into a live loop: the user views the page in their browser and gives feedback by **typing, talking, recording the screen, screenshotting, or clicking to pick an element** — and you (Claude) pick it up in real time, fix it, and reply in the browser. They never have to come back to the terminal.
+Turns "open this HTML" into a live loop: the user views the page in their browser and gives feedback by **typing, talking, recording the screen, screenshotting, or clicking to pick an element** — and a **resident pre-warmed agent** (booted by the relay itself) picks it up instantly, fixes it, and replies in the browser. They never have to come back to the terminal, and nothing polls: the browser is fed over SSE, the agent over stdin.
 
-The backend relay and the injected widget live next to this file under `relay/` (`relay/server.js`, `relay/widget.js`). This skill folder is referred to below as `<SKILL_DIR>` (e.g. `~/.claude/skills/yapui`).
+The backend relay, the injected widget, and the resident agent live next to this file under `relay/` (`relay/server.js`, `relay/widget.js`, `relay/agent.js`). This skill folder is referred to below as `<SKILL_DIR>` (e.g. `~/.claude/skills/yapui`).
 
 ## When to use
 Any request to **see / preview / open / serve / render** an HTML file in the browser — a mockup, prototype, report, component, or page. Prefer this over `open file.html`.
@@ -23,27 +23,43 @@ Target HTML = **$HTML** (absolute path).
    ```sh
    PORT=<port> HTML_FILE="$HTML" WORKDIR="<workdir>" node "<SKILL_DIR>/relay/server.js"
    ```
+   The relay immediately spawns and **pre-warms a resident headless `claude` agent** (primed by reading the HTML), so the first note already hits a hot agent.
 4. **Wait, then open:**
    ```sh
    curl -s --retry 30 --retry-delay 1 --retry-connrefused -o /dev/null "http://localhost:<port>/"
    open -a "Google Chrome" "http://localhost:<port>/"   # macOS; Linux: xdg-open; Windows: start
    ```
-5. **Tell the user** it's live and how to give feedback in the browser: the **Feedback** button (bottom-left, or press `f`) → **type · 🎙 Talk · 🎬 Record · 📸 Snap · 🎯 Pick**. Mic / screen-share prompts are normal; everything stays on their machine.
-6. **Arm the watcher (background, `run_in_background: true`)** — marker-based so it never skips a note:
-   ```sh
-   FB="<workdir>/feedback.jsonl"; MARK="<workdir>/.fb-processed"
-   [ -f "$MARK" ] || { wc -l < "$FB" 2>/dev/null | tr -d ' ' > "$MARK" 2>/dev/null || echo 0 > "$MARK"; }
-   c=0; while [ $c -lt 5400 ]; do
-     now=$(wc -l < "$FB" 2>/dev/null | tr -d ' '); now=${now:-0}
-     seen=$(cat "$MARK" 2>/dev/null | tr -d ' '); seen=${seen:-0}
-     [ "${now:-0}" -gt "${seen:-0}" ] && { echo "NEW_FEEDBACK seen=$seen now=$now"; exit 0; }
-     c=$((c+1)); sleep 1
-   done; echo WATCH_IDLE_TIMEOUT
-   ```
+5. **Check the mode:** `curl -s http://localhost:<port>/agent`
+   - `"state":"ready"` or `"booting"` → **instant mode** (default). Do **NOT** arm a watcher — the resident agent owns feedback and a watcher would double-process it. You're done.
+   - `"state":"off"` (no `claude` on PATH, or `YAP_AGENT=off`) → **watcher fallback** — arm the watcher below.
+6. **Tell the user** it's live and how to give feedback in the browser: the **Feedback** button (bottom-left, or press `f`) → **type · 🎙 Talk · 🎬 Record · 📸 Snap · 🎯 Pick**. Fixes are handled instantly by a live agent — they'll see each card flip 🔴→🟠 (with a live "✏️ editing…" ticker)→✅ and a reply toast, then the page auto-refreshes. Mic / screen-share prompts are normal; everything stays on their machine.
 
-## When the watcher fires (you get a task-notification)
+## Instant mode (default) — how it works, and your role
 
-1. **Read `<workdir>/feedback.md`** — newest at the bottom. Besides the note + page/context, an entry may carry **`pointing at` / `pointing timeline`** lines (where the user's cursor was *during* the message) — use them to resolve "make **this** bigger" / "move **that**" to the actual element, especially in **🎙 (talk)** notes where they point while speaking. A talk note also gets a **`what you said (timeline)`** on the *same clock* as the pointing trail — line up the spoken word with the cursor position to know exactly what "this" was. It may also reference a picked element, a recording, or a screenshot.
+- The relay pipes each note (with element/cursor/voice context and any screenshot or recording path) straight into the resident agent's stdin; the card flips to ⛏️ working in ~40ms; tool activity streams onto the card; the agent's final message becomes the in-browser reply; `done` flips the card and all-green auto-refreshes the page.
+- Notes sent while the agent is busy queue honestly ("⏳ agent is finishing the previous fix…") and dispatch the moment it frees up. The agent keeps session context, so "make **that** bigger too" works across notes.
+- If the agent can't action a note it replies `NEEDS-YOU: …` → the card flips 🙋 and blocks auto-refresh; the user answers by sending another note.
+- **Your role in the terminal: nothing.** Don't watch files, don't flip statuses. Stay available for direct questions. If the user asks you to change the page directly, just edit $HTML — the agent re-reads it on its next note.
+- Env knobs (set on the relay): `YAP_AGENT=off` (disable), `YAP_AGENT_MODEL` (default `sonnet`; `haiku` = fastest), `YAP_CLAUDE_BIN`, `YAP_AGENT_RECYCLE` (turns before recycling, default 30), `YAP_AGENT_TIMEOUT` (hung-turn kill, default 240s). The agent runs `--permission-mode acceptEdits` limited to `Read,Edit,Write,MultiEdit,Grep,Glob,Bash(ffmpeg:*)` in the HTML's directory.
+- If the agent dies 3× it flips remaining cards back to 🔴 and `/agent` reports `"dead"` → treat as watcher fallback from then on.
+
+## Watcher fallback (only when `/agent` says `off` / `dead`)
+
+**Arm the watcher (background, `run_in_background: true`)** — marker-based so it never skips a note:
+```sh
+FB="<workdir>/feedback.jsonl"; MARK="<workdir>/.fb-processed"
+[ -f "$MARK" ] || { wc -l < "$FB" 2>/dev/null | tr -d ' ' > "$MARK" 2>/dev/null || echo 0 > "$MARK"; }
+c=0; while [ $c -lt 5400 ]; do
+  now=$(wc -l < "$FB" 2>/dev/null | tr -d ' '); now=${now:-0}
+  seen=$(cat "$MARK" 2>/dev/null | tr -d ' '); seen=${seen:-0}
+  [ "${now:-0}" -gt "${seen:-0}" ] && { echo "NEW_FEEDBACK seen=$seen now=$now"; exit 0; }
+  c=$((c+1)); sleep 1
+done; echo WATCH_IDLE_TIMEOUT
+```
+
+**When the watcher fires (you get a task-notification):**
+
+1. **Read `<workdir>/feedback.md`** — newest at the bottom. Besides the note + page/context, an entry may carry **`pointing at` / `pointing timeline`** lines (where the user's cursor was *during* the message) — use them to resolve "make **this** bigger" / "move **that**" to the actual element, especially in **🎙 (talk)** notes where they point while speaking. A talk note also gets a **`what you said (timeline)`** on the *same clock* — line up spoken word with cursor position to know what "this" was. It may also reference a picked element, a recording, or a screenshot.
 2. **Look at any attached media:**
    - Screenshot (`<workdir>/screenshots/*.png`) → Read it.
    - Recording (`<workdir>/recordings/*.webm`) → see the motion via frames:
@@ -51,7 +67,7 @@ Target HTML = **$HTML** (absolute path).
    - Picked element → `element.selector` / `data-*` / text point you straight at the DOM node in the HTML source.
 3. **Flip the card to working, then apply the fix.** Each note is a queue card whose id is its `taskId`:
    `node "<SKILL_DIR>/relay/flip-status.js" "<workdir>" <taskId> working`
-   Then edit the HTML. The relay re-reads the file each load, so the user just **refreshes** to see HTML changes — no restart. (Restart the relay only if you edit `relay/server.js` or `relay/widget.js`.)
+   Then edit the HTML. The relay re-reads the file each load, so the user just **refreshes** to see HTML changes — no restart. (Restart the relay only if you edit `relay/server.js` or `relay/agent.js`; widget edits self-reload.)
 4. **Verify when it matters** by rendering with headless Chrome / Playwright (`chromium.launch({channel:'chrome'})`, `playwright-core` avoids a browser download) against `http://localhost:<port>/` and Reading the screenshot.
 5. **Reply in the browser** — append one line to `<workdir>/claude-replies.jsonl`:
    ```sh
@@ -59,22 +75,22 @@ Target HTML = **$HTML** (absolute path).
      "<workdir>/claude-replies.jsonl" "Fixed X — refresh to see."
    node "<SKILL_DIR>/relay/flip-status.js" "<workdir>" <taskId> done   # or: needs-you (a question you can't action)
    ```
-   The widget shows the reply and flips the card. When **every** card is `done` the page auto-refreshes; a `needs-you` card blocks that so a question is never refreshed away. The user can ✕ any card to remove it.
+   The relay pushes replies and flips to the browser instantly over SSE.
 6. **Advance the marker to the watcher's reported `now`, then re-arm:**
    `echo <now> > "<workdir>/.fb-processed"` (the `now` from `NEW_FEEDBACK seen=X now=Y`) — **not** a fresh `wc -l`. A note that arrived while you were working sits *above* `now`, so the re-armed watcher fires for it; re-counting the file here would mark it seen and silently drop it. Then start the watcher loop again.
 
 Keep a short terminal note too, but the in-browser reply is the primary channel.
 
 ## Browser states the user sees
-- **Task queue (top-right)** — each note becomes a card: 🔴 queued → 🟠 ⛏️ working → ✅ done (🙋 needs-you). All cards green → the page auto-refreshes; ✕ removes a card. A 🖥 line under the header shows what their cursor is over.
-- **👀 Claude is watching** (bottom-right, blinks) — idle/armed.
+- **Task queue (top-right)** — each note becomes a card: 🔴 queued → 🟠 ⛏️ working (with a live activity line: "✏️ editing index.html…") → ✅ done (🙋 needs-you). All cards green → the page auto-refreshes; ✕ removes a card. A 🖥 line under the header shows what their cursor is over.
+- **⚡ Claude is ready — instant fixes** (header, idle) — resident agent hot. Watcher fallback shows **👀 Claude is watching** instead.
 - **⟳ Claude is working on it…** (top-center) + the Feedback button glows — the instant they send.
-- **Claude: … — refresh to see** (top-center) — when you reply, then back to 👀.
+- **Claude: … — refresh to see** (top-center) — on reply, then back to ⚡/👀.
 
 ## Notes
-- HTML edits → the user refreshes (or the queue auto-refreshes when all cards go green). **Widget edits self-reload the open page** automatically (it polls `/version`); `relay/server.js` edits need a relay restart, after which the page also self-reloads — so you rarely need to ask for a manual refresh. The feedback panel opens **expanded by default**, remembers a deliberate collapse, and keeps an unsent draft across reloads.
-- Artifacts live under `<workdir>`: `feedback.md` (read this), `feedback.jsonl`, `recordings/`, `screenshots/`, `claude-replies.jsonl`, `.fb-processed`.
-- Requirements: Node, a Chromium-based browser for voice/recording (Web Speech + getDisplayMedia), `ffmpeg` to read recordings, internet for the screenshot lib (html2canvas via CDN).
+- All live updates (cards, ticker, replies, agent state) push over **SSE** (`/events`); the widget falls back to polling only if the stream drops. HTML edits → refresh (or auto-refresh on all-green). **Widget edits self-reload the open page**; `relay/server.js` / `relay/agent.js` edits need a relay restart (the page then self-reloads too). The feedback panel opens **expanded by default**, remembers a deliberate collapse, and keeps an unsent draft across reloads.
+- Artifacts live under `<workdir>`: `feedback.md`, `feedback.jsonl`, `recordings/`, `screenshots/`, `claude-replies.jsonl`, `tasks.jsonl`, `.fb-processed`.
+- Requirements: Node + the `claude` CLI on PATH for instant mode (falls back to watcher mode without it), a Chromium-based browser for voice/recording, `ffmpeg` to read recordings, internet for the screenshot lib (html2canvas via CDN).
 
 ## Stop
-Kill the relay and the watcher (`lsof -ti:<port> | xargs kill`; stop the watcher background task).
+Kill the relay (`lsof -ti:<port> | xargs kill`) — it takes the resident agent down with it. In watcher fallback, also stop the watcher background task.

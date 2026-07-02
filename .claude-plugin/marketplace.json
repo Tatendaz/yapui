@@ -8,8 +8,8 @@
     {
       "name": "yapui",
       "source": ".",
-      "description": "Yap at your UI — live HTML preview with a two-way feedback loop.",
-      "version": "0.1.0",
+      "description": "Yap at your UI — live HTML preview with an instant two-way feedback loop (resident pre-warmed agent).",
+      "version": "0.2.0",
       "license": "MIT",
       "homepage": "https://github.com/Tatendaz/yapui",
       "repository": "https://github.com/Tatendaz/yapui"
