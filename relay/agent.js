@@ -277,7 +277,9 @@ function create(opts) {
   function kill() {
     st.state = 'off';
     const c = st.child; st.child = null;
-    if (c) { try { c.stdin.end(); } catch (e) {} try { c.kill(); } catch (e) {} }
+    // SIGKILL, not SIGTERM: the relay is exiting NOW (its timers die with it), the worker is
+    // stateless, and a mid-inference child that ignores SIGTERM would be orphaned forever
+    if (c) { try { c.stdin.end(); } catch (e) {} try { c.kill('SIGKILL'); } catch (e) {} }
   }
   setInterval(function () {
     // a hung TURN (busy) and a hung BOOT/PRIME (booting) both need the kick — a stalled prime would otherwise stick forever
