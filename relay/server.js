@@ -12,6 +12,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const agentMod = require('./agent');
 
 const HTML_FILE = process.env.HTML_FILE;
@@ -58,8 +59,8 @@ function appendTask(rec) { fs.appendFileSync(TASKS, JSON.stringify(rec) + '\n');
 function ensureTask(id, text, screen) {
   id = String(id || '').slice(0, 64); // canonicalize exactly like appendTask writes it, so dedup matches the file (see canonId)
   if (!id || knownTasks.has(id)) return;
-  knownTasks.add(id);
   appendTask({ type: 'task', id: id, text: (text || '(no note)').toString().slice(0, 2000), screen: (screen || 'page').toString().slice(0, 200), status: 'queued', ts: new Date().toISOString() });
+  knownTasks.add(id); // only after the append actually landed — a failed write must not poison the dedup set
 }
 
 let repliesSeen = countLines(REPLIES);
@@ -94,7 +95,17 @@ function canonId(id) { return String(id || '').slice(0, 64); } // ONE id format 
 function handoff(item) { // → resident agent; falls through silently in watcher mode
   item.taskId = canonId(item.taskId);
   ensureTask(item.taskId, item.text || item.note || (item.element ? 'element ' + (item.element.id || item.element.tag) : (item.recording ? 'clip' : item.screenshot ? 'screenshot' : '(no note)')), item.screen);
-  agent.onFeedback(item);
+  if (!item.recording) return void agent.onFeedback(item);
+  // the agent has no shell — pre-extract a contact sheet here (fixed args, workdir-contained paths), then hand off
+  const framesRel = item.recording + '.frames.png';
+  const child = spawn('ffmpeg', ['-y', '-i', path.join(WORKDIR, item.recording), '-vf', 'fps=4,scale=400:-1,tile=8x8', '-frames:v', '1', path.join(WORKDIR, framesRel)], { stdio: 'ignore' });
+  const t = setTimeout(function () { try { child.kill('SIGKILL'); } catch (e) {} }, 20000);
+  child.on('error', function () { clearTimeout(t); agent.onFeedback(item); }); // no ffmpeg → agent goes by the note text
+  child.on('close', function (code) {
+    clearTimeout(t);
+    if (code === 0 && fs.existsSync(path.join(WORKDIR, framesRel))) item.frames = framesRel;
+    agent.onFeedback(item);
+  });
 }
 
 function inject(html) {
@@ -143,8 +154,9 @@ function elementMd(el) {
 }
 function cursorMd(c) { if (!c || !c.desc) return ''; return '\n**pointing at (at send):** `' + String(c.desc).slice(0, 200) + '`\n'; }
 function fmtMs(ms) { var s = Math.floor((+ms || 0) / 1000); return Math.floor(s / 60) + ':' + ((s % 60) < 10 ? '0' : '') + (s % 60); }
-function pointingMd(arr) { if (!Array.isArray(arr) || !arr.length) return ''; var o = '\n**pointing timeline during message:**\n'; arr.slice(0, 60).forEach(function (p) { o += '- ' + fmtMs(p.ms) + '  ' + String(p.desc || '').slice(0, 120) + '\n'; }); return o; }
-function voiceMd(arr) { if (!Array.isArray(arr) || !arr.length) return ''; var o = '\n**what you said (timeline — same clock as the pointing trail):**\n'; arr.slice(0, 80).forEach(function (p) { o += '- ' + fmtMs(p.ms) + '  "' + String(p.t || '').slice(0, 80) + '"\n'; }); return o; }
+function cleanArr(arr) { return Array.isArray(arr) ? arr.filter(function (p) { return p && typeof p === 'object'; }) : []; }
+function pointingMd(arr) { arr = cleanArr(arr); if (!arr.length) return ''; var o = '\n**pointing timeline during message:**\n'; arr.slice(0, 60).forEach(function (p) { o += '- ' + fmtMs(p.ms) + '  ' + String(p.desc || '').slice(0, 120) + '\n'; }); return o; }
+function voiceMd(arr) { arr = cleanArr(arr); if (!arr.length) return ''; var o = '\n**what you said (timeline — same clock as the pointing trail):**\n'; arr.slice(0, 80).forEach(function (p) { o += '- ' + fmtMs(p.ms) + '  "' + String(p.t || '').slice(0, 80) + '"\n'; }); return o; }
 
 const server = http.createServer(function (req, res) {
   try {
@@ -213,8 +225,8 @@ const server = http.createServer(function (req, res) {
       return;
     }
     if (req.method === 'POST' && url === '/tasks/clear') {
-      try { fs.writeFileSync(TASKS, ''); } catch (e) {}
-      knownTasks.clear(); pushTasks();
+      try { fs.writeFileSync(TASKS, ''); knownTasks.clear(); pushTasks(); } // memory clears only if the truncate landed
+      catch (e) { res.writeHead(500); return res.end('{"ok":false}'); }
       res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('{"ok":true}');
     }
     // ---- live cursor presence (last-known position; also rides along with each feedback) ----
@@ -258,22 +270,27 @@ const server = http.createServer(function (req, res) {
     }
 
     // binary saves only — the note/element/cursor metadata follows as a normal JSON /feedback
-    // carrying the returned file ref (headers have hard size limits; bodies don't)
+    // carrying the returned file ref (headers have hard size limits; bodies don't).
+    // Streamed straight to disk: a 200MB recording must not be buffered (twice) in memory.
     if (req.method === 'POST' && (url === '/upload' || url === '/shot')) {
       const isClip = url === '/upload';
-      const chunks = []; let size = 0;
-      req.on('data', function (c) { chunks.push(c); size += c.length; if (size > (isClip ? 200e6 : 50e6)) req.destroy(); });
-      req.on('end', function () {
-        try {
-          const dir = isClip ? REC_DIR : SHOT_DIR;
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          const buf = Buffer.concat(chunks);
-          const name = (isClip ? 'clip-' : 'shot-') + new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6) + (isClip ? '.webm' : '.png');
-          fs.writeFileSync(path.join(dir, name), buf);
-          const file = (isClip ? 'recordings/' : 'screenshots/') + name;
-          process.stdout.write('[' + (isClip ? 'recording' : 'screenshot') + '] ' + name + ' (' + Math.round(buf.length / 1024) + ' KB)\n');
-          res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, file: file }));
-        } catch (e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message })); }
+      const limit = isClip ? 200e6 : 50e6;
+      const dir = isClip ? REC_DIR : SHOT_DIR;
+      try { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch (e) { res.writeHead(500); return res.end('{"ok":false}'); }
+      const name = (isClip ? 'clip-' : 'shot-') + new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 6) + (isClip ? '.webm' : '.png');
+      const abs = path.join(dir, name);
+      const out = fs.createWriteStream(abs);
+      let size = 0, failed = false;
+      function fail(code) { if (failed) return; failed = true; try { out.destroy(); } catch (e) {} fs.unlink(abs, function () {}); try { res.writeHead(code); res.end('{"ok":false}'); } catch (e) {} }
+      req.on('data', function (c) { size += c.length; if (size > limit) { req.destroy(); fail(413); } });
+      req.pipe(out);
+      out.on('error', function () { fail(500); });
+      req.on('error', function () { fail(500); });
+      out.on('finish', function () {
+        if (failed) return;
+        const file = (isClip ? 'recordings/' : 'screenshots/') + name;
+        process.stdout.write('[' + (isClip ? 'recording' : 'screenshot') + '] ' + name + ' (' + Math.round(size / 1024) + ' KB)\n');
+        res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, file: file }));
       });
       return;
     }

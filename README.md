@@ -87,7 +87,7 @@ YapUI is a `SKILL.md` plus a tiny local relay — no build step, no framework, z
 | File | Role |
 | --- | --- |
 | `relay/server.js` | Serves your HTML over `http://localhost` (so mic + screen capture work), injects the widget, and pushes every update to the browser over SSE (`/events`). Re-reads the file on each load, so edits show up on refresh. |
-| `relay/agent.js` | The resident fix agent: spawns headless `claude` (stream-json over stdin/stdout), pre-warms it on your HTML, queues/coalesces notes, streams a live activity ticker, posts the reply, recycles itself after N turns, and respawns on crashes. |
+| `relay/agent.js` | The resident fix agent: spawns headless `claude` (stream-json over stdin/stdout), pre-warms it on your HTML, queues notes one turn each, streams a live activity ticker, posts the reply, recycles itself after N turns, and respawns on crashes. |
 | `relay/widget.js` | The in-page feedback panel, the "⚡ Claude is ready" indicator, and the live task queue (SSE-driven; falls back to polling only if the stream drops). |
 | `relay/flip-status.js` | Lets your main Claude session drive the queue cards in watcher-fallback mode. |
 | `SKILL.md` | Tells Claude how to launch the relay, check which mode is active (`GET /agent`), and run the watcher fallback when there's no resident agent. |
@@ -101,12 +101,12 @@ Set these on the relay process:
 | Env | Default | What it does |
 | --- | --- | --- |
 | `YAP_AGENT` | on | `off` disables the resident agent (classic watcher mode) |
-| `YAP_AGENT_MODEL` | `sonnet` | Model for fixes — `haiku` for maximum speed, `opus` for gnarly pages |
+| `YAP_AGENT_MODEL` | `sonnet` | Model for fixes — `sonnet` also benchmarked fastest end-to-end here; `opus` for gnarly pages |
 | `YAP_CLAUDE_BIN` | `claude` | Path to the Claude Code CLI |
 | `YAP_AGENT_RECYCLE` | `30` | Turns before the agent is recycled (keeps context lean) |
 | `YAP_AGENT_TIMEOUT` | `240` | Seconds of mid-turn silence before a hung agent is restarted |
 
-The agent runs `--permission-mode acceptEdits` restricted to `Read,Edit,Write,MultiEdit,Grep,Glob,Bash(ffmpeg:*)`, working only in the served HTML's directory — it can edit files there without prompting, and nothing else.
+The agent runs `--permission-mode acceptEdits` restricted to `Read,Edit,Write,MultiEdit,Grep,Glob` (no shell — the relay pre-extracts recording frames itself), working only in the served HTML's directory — it can edit files there without prompting, and nothing else.
 
 ## Requirements
 

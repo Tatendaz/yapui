@@ -144,7 +144,10 @@
   function pickMime() { var c = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']; for (var i = 0; i < c.length; i++) { if (MediaRecorder.isTypeSupported(c[i])) return c[i]; } return ''; }
   function fmt(s) { var m = Math.floor(s / 60), x = s % 60; return m + ':' + (x < 10 ? '0' : '') + x; }
   function setRec(on) { recording = on; recBtn.classList.toggle('on', on); recLbl.textContent = on ? 'Stop' : 'Record'; recDot.classList.toggle('show', on && !panel.classList.contains('show')); }
+  var recPending = false; // a second Record click while permission prompts are up must not double-start
   async function startRec() {
+    if (recPending || recording) return;
+    recPending = true;
     try {
       recStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false });
       var micStream = null; try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) {}
@@ -160,7 +163,7 @@
       // don't leave captured screen/mic tracks running if MediaRecorder setup failed mid-way
       if (recStream) { try { recStream.getTracks().forEach(function (t) { t.stop(); }); if (recStream.__mic) recStream.__mic.getTracks().forEach(function (t) { t.stop(); }); } catch (e2) {} recStream = null; }
       setRec(false); flash(e && e.name === 'NotAllowedError' ? 'Screen share cancelled' : 'Could not start recording', true);
-    }
+    } finally { recPending = false; }
   }
   function stopRec() {
     if (mr && mr.state !== 'inactive') { try { mr.stop(); } catch (e) {} }
@@ -181,7 +184,7 @@
 
   /* ---- element picker ---- */
   var picking = false, picked = null;
-  function cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, function (c) { return '\\' + c; }); }
+  function cssEsc(s) { return (window.CSS && window.CSS.escape) ? window.CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, function (c) { return '\\' + c; }); } // window.CSS explicitly — the local CSS stylesheet string shadows it
   function cssPath(el) {
     var parts = [], node = el, depth = 0;
     while (node && node.nodeType === 1 && depth < 5) {
@@ -294,7 +297,7 @@
     if (recBlob) return sendBinary('/upload', recBlob, 'clip ' + fmt(recSecs));
     return sendText();
   };
-  ta.addEventListener('keydown', function (e) { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); sendBtn.onclick(); } });
+  ta.addEventListener('keydown', function (e) { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); if (!sendBtn.disabled) sendBtn.onclick(); } });
   document.addEventListener('keydown', function (e) {
     if (picking) return;
     var tag = (e.target && e.target.tagName || '').toLowerCase();
@@ -459,7 +462,10 @@
   }
   function startCd() {
     var n = 3; qFoot.classList.add('show'); qGo.style.display = 'none'; qCancel.style.display = ''; qCd.textContent = 'All done — refreshing in ' + n + '…';
-    cdTimer = setInterval(function () { n--; if (n <= 0) { clearInterval(cdTimer); cdTimer = null; doRefresh(); } else qCd.textContent = 'All done — refreshing in ' + n + '…'; }, 1000);
+    cdTimer = setInterval(function () {
+      if (busyComposing()) { cancelCd(); showManual(); return; }  // they started typing mid-countdown — never refresh under them
+      n--; if (n <= 0) { clearInterval(cdTimer); cdTimer = null; doRefresh(); } else qCd.textContent = 'All done — refreshing in ' + n + '…';
+    }, 1000);
   }
   function cancelCd() { if (cdTimer) { clearInterval(cdTimer); cdTimer = null; } if (!manualShown) qFoot.classList.remove('show'); }
   function showManual() { manualShown = true; qFoot.classList.add('show'); qCd.textContent = 'All done.'; qCancel.style.display = 'none'; qGo.style.display = ''; }
