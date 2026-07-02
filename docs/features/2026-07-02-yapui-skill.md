@@ -18,6 +18,9 @@ The original loop had dead air baked in: a shell watcher polled `feedback.jsonl`
 - Agent sandbox: `--permission-mode acceptEdits`, tools limited to `Read,Edit,Write,MultiEdit,Grep,Glob` (no shell — the relay pre-extracts recording frame sheets), cwd pinned to the served HTML's directory, MCP servers disabled for fast boot.
 - **Hardening round (same PR)** — one note per agent turn (per-note statuses + replies), stale child-process events ignored after recycling, queued cards drained if the agent dies, artifact paths clamped to the workdir; relay rejects cross-origin POSTs and serves sibling assets (css/js/images) with traversal/dotfile/workdir blocking; widget element-picker highlight fixed (duplicate hoisted handler), correct `:nth-of-type`, blob-URL cleanup, optimistic-card rollback on failed sends.
 
+## Security
+- `serveSibling` (relay/server.js) resolves the target with `fs.realpathSync` and re-checks the prefix against the realpathed HTML dir, so a symlink placed inside the served directory cannot be followed to a file outside it; plain `../` traversal is rejected earlier by a per-segment check. Both vectors have regression tests (`npm test` → "path traversal is blocked", "symlink escape out of the served dir is blocked"). The realpath guard was added mid-review (lexical-only in `9df72f4`, hardened in `1a07542`); a push-time security review of the earlier commit correctly flagged the pre-hardening symlink window — verified fixed on HEAD by attacking a live relay with encoded-traversal and live symlink-escape payloads (all returned 404).
+
 ## Notes
 - Backward compatible: without the `claude` CLI on PATH (or with `YAP_AGENT=off`) everything behaves as before, and even then flips/replies now push over SSE instead of polls.
 - Tuning env vars: `YAP_AGENT`, `YAP_AGENT_MODEL` (default `sonnet`), `YAP_CLAUDE_BIN`, `YAP_AGENT_RECYCLE` (30), `YAP_AGENT_TIMEOUT` (240 s).

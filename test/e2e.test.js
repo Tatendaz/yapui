@@ -148,6 +148,12 @@ async function testFallbackMode() {
   ok((await get(port, '/..%2f..%2fetc%2fpasswd')).status === 404, 'path traversal is blocked');
   ok((await get(port, '/.secret')).status === 404, 'dotfiles are not served');
   ok((await get(port, '/.yapui/feedback.jsonl')).status === 404, 'workdir artifacts are not served');
+  // a symlink INSIDE the served dir pointing outside it must not be followed (realpath guard, not just the lexical check)
+  const outside = path.join(path.dirname(r.html), '..', 'sym-secret.txt');
+  fs.writeFileSync(outside, 'top-secret');
+  try { fs.symlinkSync(outside, path.join(path.dirname(r.html), 'leak.txt')); } catch (e) {}
+  const leak = await get(port, '/leak.txt');
+  ok(leak.status === 404 && leak.body.indexOf('top-secret') === -1, 'symlink escape out of the served dir is blocked');
   const evil = await post(port, '/feedback', { text: 'evil', taskId: 'x1' }, { Origin: 'https://evil.example' });
   ok(evil.status === 403, 'cross-origin POSTs are rejected');
   ok((await get(port, '/', { Host: 'evil.example' })).status === 403, 'DNS-rebinding Host headers are rejected');
