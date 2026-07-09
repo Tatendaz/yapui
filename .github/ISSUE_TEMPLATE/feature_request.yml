@@ -1,0 +1,33 @@
+name: Feature request
+description: A new feedback mode, browser-state polish, or anything else yapui should do.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the itch?
+      description: The problem or friction you hit, not the solution — that comes next.
+      placeholder: When I review a page on my phone, I can't…
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds or alternatives you considered
+  - type: checkboxes
+    id: area
+    attributes:
+      label: Area
+      options:
+        - label: New feedback mode (talk / point / record / …)
+        - label: Widget / in-page UI
+        - label: Resident agent behavior
+        - label: Relay / server
+        - label: Docs / skill instructions

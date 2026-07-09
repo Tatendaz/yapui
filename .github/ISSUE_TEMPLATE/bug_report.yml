@@ -1,0 +1,52 @@
+name: Bug report
+description: Something broke — a card stuck, a mode not working, the relay crashing.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what actually happened?
+      placeholder: I sent a voice note and the card stayed red forever…
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Ask Claude to "preview index.html"
+        2. Press f, hit Talk, say "make the title red"
+        3. Send
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Which mode?
+      description: Check the ⚡ indicator top-right, or `curl localhost:<port>/agent`.
+      options:
+        - Instant mode (resident agent)
+        - Watcher fallback (YAP_AGENT=off or no claude CLI)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, and tool versions.
+      placeholder: |
+        macOS 15.5 · Chrome 132
+        node -v: v22.1.0
+        claude --version: 2.x
+        ffmpeg: installed / not installed
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relay output
+      description: Anything the relay printed in the terminal ([agent] / [relay] lines). Feedback artifacts live in .yapui/ next to your HTML if relevant.
+      render: shell
