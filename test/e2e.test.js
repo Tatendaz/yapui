@@ -151,6 +151,7 @@ async function testFallbackMode() {
   // a symlink INSIDE the served dir pointing outside it must not be followed (realpath guard, not just the lexical check)
   const outside = path.join(path.dirname(r.html), '..', 'sym-secret.txt');
   fs.writeFileSync(outside, 'top-secret');
+  tmpdirs.push(outside); // sits above the mkdtemp dir, so it needs its own cleanup registration
   try { fs.symlinkSync(outside, path.join(path.dirname(r.html), 'leak.txt')); } catch (e) {}
   const leak = await get(port, '/leak.txt');
   ok(leak.status === 404 && leak.body.indexOf('top-secret') === -1, 'symlink escape out of the served dir is blocked');
