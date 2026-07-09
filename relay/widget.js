@@ -174,7 +174,7 @@
   function freeUrl(el) { try { if (el.src && el.src.indexOf('blob:') === 0) URL.revokeObjectURL(el.src); } catch (e) {} }
   function finishRec() {
     recBlob = new Blob(recChunks, { type: (mr && mr.mimeType) || 'video/webm' });
-    freeUrl(video); video.src = URL.createObjectURL(recBlob); clipBox.classList.add('show'); shotBox.classList.remove('show'); shotBlob = null;
+    freeUrl(video); video.src = URL.createObjectURL(recBlob); clipBox.classList.add('show'); shotBox.classList.remove('show'); shotBlob = null; freeUrl(shotImg); shotImg.src = '';
     clipLbl.textContent = 'Clip ' + fmt(recSecs) + ' · ' + Math.round(recBlob.size / 1024) + ' KB';
     if (!panel.classList.contains('show')) openP(); flash('Clip ready — add a note + Send');
   }
@@ -247,7 +247,7 @@
     loadH2C().then(function () {
       return window.html2canvas(target, { scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true });
     }).then(function (canvas) {
-      canvas.toBlob(function (b) { if (!b) { flash('Capture failed', true); return; } shotBlob = b; freeUrl(shotImg); shotImg.src = URL.createObjectURL(b); shotBox.classList.add('show'); clipBox.classList.remove('show'); recBlob = null; shotLbl.textContent = 'Screenshot · ' + Math.round(b.size / 1024) + ' KB' + (picked ? ' · ' + (picked.id ? '#' + picked.id : picked.tag) : ' · full page'); flash('Screenshot ready — add a note + Send'); }, 'image/png');
+      canvas.toBlob(function (b) { if (!b) { flash('Capture failed', true); return; } shotBlob = b; freeUrl(shotImg); shotImg.src = URL.createObjectURL(b); shotBox.classList.add('show'); clipBox.classList.remove('show'); recBlob = null; freeUrl(video); video.src = ''; shotLbl.textContent = 'Screenshot · ' + Math.round(b.size / 1024) + ' KB' + (picked ? ' · ' + (picked.id ? '#' + picked.id : picked.tag) : ' · full page'); flash('Screenshot ready — add a note + Send'); }, 'image/png');
     }).catch(function () { flash('Screenshot needs internet (html2canvas)', true); });
   }
   snapBtn.onclick = snap;

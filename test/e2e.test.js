@@ -152,9 +152,14 @@ async function testFallbackMode() {
   const outside = path.join(path.dirname(r.html), '..', 'sym-secret.txt');
   fs.writeFileSync(outside, 'top-secret');
   tmpdirs.push(outside); // sits above the mkdtemp dir, so it needs its own cleanup registration
-  try { fs.symlinkSync(outside, path.join(path.dirname(r.html), 'leak.txt')); } catch (e) {}
-  const leak = await get(port, '/leak.txt');
-  ok(leak.status === 404 && leak.body.indexOf('top-secret') === -1, 'symlink escape out of the served dir is blocked');
+  let linked = true;
+  try { fs.symlinkSync(outside, path.join(path.dirname(r.html), 'leak.txt')); } catch (e) { linked = false; }
+  if (linked) {
+    const leak = await get(port, '/leak.txt');
+    ok(leak.status === 404 && leak.body.indexOf('top-secret') === -1, 'symlink escape out of the served dir is blocked');
+  } else {
+    console.log('  - symlink escape check skipped (symlinks not supported here)'); // a vacuous 404 must not count as exercising the realpath guard
+  }
   const evil = await post(port, '/feedback', { text: 'evil', taskId: 'x1' }, { Origin: 'https://evil.example' });
   ok(evil.status === 403, 'cross-origin POSTs are rejected');
   ok((await get(port, '/', { Host: 'evil.example' })).status === 403, 'DNS-rebinding Host headers are rejected');

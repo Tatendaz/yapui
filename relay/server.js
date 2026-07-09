@@ -113,7 +113,8 @@ let handoffChain = Promise.resolve(); // notes reach the agent strictly in arriv
 function handoff(item) { // → resident agent; falls through silently in watcher mode
   item.taskId = canonId(item.taskId);
   ensureTask(item.taskId, item.text || item.note || (item.element ? 'element ' + (item.element.id || item.element.tag) : (item.recording ? 'clip' : item.screenshot ? 'screenshot' : '(no note)')), item.screen);
-  handoffChain = handoffChain.then(function () { return extractFrames(item); }).then(function () { agent.onFeedback(item); });
+  handoffChain = handoffChain.then(function () { return extractFrames(item); }).then(function () { agent.onFeedback(item); })
+    .catch(function (e) { console.error('[relay] handoff failed: ' + (e && e.message)); }); // a failed note must not wedge the chain — the catch re-seeds it so later notes still flow
 }
 
 function inject(html) {
@@ -150,8 +151,10 @@ function serveSibling(url, res) { // css/js/images referenced by the HTML live n
   if (!(real + path.sep).startsWith(HTML_DIR_REAL + path.sep)) return false;
   let st; try { st = fs.statSync(real); } catch (e) { return false; }
   if (!st.isFile()) return false;
+  // read before writeHead — a delete/replace race after the stat must 404, not die after the 200 is flushed
+  let body; try { body = fs.readFileSync(real); } catch (e) { return false; }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(abs).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
-  res.end(fs.readFileSync(real));
+  res.end(body);
   return true;
 }
 function appendMd(s) { fs.appendFileSync(FB_MD, s); }
