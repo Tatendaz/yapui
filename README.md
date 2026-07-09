@@ -187,7 +187,7 @@ Runs the whole loop against a fake `claude` binary that speaks the real stream-j
 
 ## Contributing
 
-Issues and PRs welcome — especially new feedback modes and browser-state polish.
+Issues and PRs welcome — especially new feedback modes and browser-state polish. Start with [CONTRIBUTING.md](CONTRIBUTING.md) (30-second dev setup, zero dependencies to install); bugs and ideas go through the [issue templates](https://github.com/Tatendaz/yapui/issues/new/choose), and security reports go [privately](SECURITY.md). CI runs the offline test suite on Node 20/22 for every PR.
 
 ## License
 
