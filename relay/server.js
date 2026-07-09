@@ -114,7 +114,10 @@ function handoff(item) { // → resident agent; falls through silently in watche
   item.taskId = canonId(item.taskId);
   ensureTask(item.taskId, item.text || item.note || (item.element ? 'element ' + (item.element.id || item.element.tag) : (item.recording ? 'clip' : item.screenshot ? 'screenshot' : '(no note)')), item.screen);
   handoffChain = handoffChain.then(function () { return extractFrames(item); }).then(function () { agent.onFeedback(item); })
-    .catch(function (e) { console.error('[relay] handoff failed: ' + (e && e.message)); }); // a failed note must not wedge the chain — the catch re-seeds it so later notes still flow
+    .catch(function (e) { // a failed note must not wedge the chain — and its card must not rot at 'queued'
+      console.error('[relay] handoff failed: ' + (e && e.message));
+      try { appendTask({ type: 'status', id: item.taskId, status: 'needs-you', note: 'handoff failed — ' + String((e && e.message) || 'unknown error').slice(0, 200), ts: new Date().toISOString() }); } catch (e2) {}
+    });
 }
 
 function inject(html) {
