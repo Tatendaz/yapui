@@ -68,10 +68,12 @@ Claude Code picks up new skills live — no restart needed (only a brand-new top
 **Update / uninstall:**
 
 ```bash
-git -C ~/.claude/skills/yapui pull      # update (git installs)
+git -C ~/.claude/skills/yapui pull      # update (personal install)
+git -C .claude/skills/yapui pull        # update (project install)
+npx skills update                       # update (skills.sh installs)
 rm -rf ~/.claude/skills/yapui           # uninstall — YapUI keeps no other state
-npx skills update                       # update, if installed via skills.sh
-npx skills remove yapui                 # uninstall, if installed via skills.sh
+rm -rf .claude/skills/yapui             # uninstall (project install)
+npx skills remove yapui                 # uninstall (skills.sh installs)
 ```
 
 ### For agents
