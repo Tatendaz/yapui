@@ -34,24 +34,55 @@ It's not just a live server. It's the *conversation* on top of one.
 
 ## Install
 
-### Option A — clone into your skills folder (simplest)
+### For humans
+
+**Option A — personal skill (all your projects, simplest):**
 
 ```bash
 git clone https://github.com/Tatendaz/yapui ~/.claude/skills/yapui
 ```
 
-That's it — Claude Code auto-discovers the skill on next launch.
-
-### Option B — install as a plugin
+**Option B — project skill (just one repo, shareable with your team):**
 
 ```bash
+git clone https://github.com/Tatendaz/yapui .claude/skills/yapui
+```
+
+**Option C — as a plugin (inside Claude Code):**
+
+```text
 /plugin marketplace add Tatendaz/yapui
 /plugin install yapui@yapui-marketplace
 ```
 
+Claude Code picks up new skills live — no restart needed (only a brand-new top-level `skills/` folder requires one). Verify with `/yapui` showing up in the slash-command list, or just ask Claude to *"preview some HTML"*.
+
+**Update / uninstall:**
+
+```bash
+git -C ~/.claude/skills/yapui pull      # update
+rm -rf ~/.claude/skills/yapui           # uninstall — YapUI keeps no other state
+```
+
+### For agents
+
+If you're a human, paste this into Claude Code (or any agent with shell access):
+
+> Install the YapUI skill: clone `https://github.com/Tatendaz/yapui` into `~/.claude/skills/yapui`, confirm `SKILL.md` exists there, then tell me how to use it.
+
+If you're an agent reading this, these steps are deterministic:
+
+```bash
+git clone https://github.com/Tatendaz/yapui "$HOME/.claude/skills/yapui"   # install
+test -f "$HOME/.claude/skills/yapui/SKILL.md" && echo "yapui installed"    # verify
+git -C "$HOME/.claude/skills/yapui" pull                                    # update
+```
+
+To use it: read `SKILL.md` and follow its **Launch** section. The short version — start `relay/server.js` in the background with `PORT`, `HTML_FILE` (absolute path), and `WORKDIR` env vars; wait for `http://localhost:<port>/` to respond; open it in a browser; then `GET /agent` to check the mode: `ready`/`booting` means the resident agent owns the feedback loop (do **not** arm a watcher), `off` means run the watcher fallback described in `SKILL.md`. YapUI follows the [Agent Skills](https://agentskills.io) layout, so any SKILL.md-compatible tool can load it — but instant mode expects the `claude` CLI (it falls back to watcher mode without it).
+
 ## Usage
 
-Just ask Claude to preview some HTML:
+Just ask Claude to preview some HTML (or invoke the skill directly with `/yapui`):
 
 ```
 preview index.html
@@ -115,6 +146,18 @@ The agent runs `--permission-mode acceptEdits` restricted to `Read,Edit,Write,Mu
 - A **Chromium-based browser** (Chrome / Edge / Brave) for voice + screen recording (Web Speech + `getDisplayMedia`).
 - **`ffmpeg`** — only if you want Claude to read screen recordings.
 - Internet access for the screenshot library (`html2canvas`, loaded via CDN).
+
+## Troubleshooting
+
+| Symptom | Likely cause / fix |
+| --- | --- |
+| Widget shows **watcher mode** instead of ⚡ instant | No `claude` on PATH (or `YAP_AGENT=off`). Instant mode needs the [Claude Code CLI](https://claude.com/claude-code); watcher mode still works from your main session. |
+| Mic or screen-record button does nothing | Voice + recording need a Chromium-based browser (Web Speech / `getDisplayMedia`), and the page must be on `http://localhost` — which YapUI does for you. Check the browser's permission prompt wasn't dismissed. |
+| Port already in use | The skill tries 8765 → 8766 → 8780 → 8790; set `PORT` yourself if you run the relay by hand. |
+| Recording sent but Claude "didn't see" it | Install `ffmpeg` — the relay uses it to extract frames for the agent. |
+| Changes not appearing | Cards must all be ✅ before the auto-refresh; check the task queue panel. Manual refresh always shows the latest file. |
+
+Everything runs locally: your HTML, notes, recordings, and screenshots never leave your machine (the only network fetch is the `html2canvas` CDN script).
 
 ## Repo layout
 
