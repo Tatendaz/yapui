@@ -302,7 +302,7 @@
     if (picking) return;
     var tag = (e.target && e.target.tagName || '').toLowerCase();
     if (e.key === 'Escape' && panel.classList.contains('show')) closeP();
-    else if ((e.key === 'f' || e.key === 'F') && tag !== 'input' && tag !== 'textarea' && !panel.classList.contains('show')) openP();
+    else if ((e.key === 'f' || e.key === 'F') && tag !== 'input' && tag !== 'textarea' && !(e.target && e.target.isContentEditable) && !panel.classList.contains('show')) openP();
   });
 
   /* ---- Claude status + replies (real-time loop) ---- */

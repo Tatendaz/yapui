@@ -200,6 +200,11 @@ function create(opts) {
     }
     if (ev.type === 'result') {
       if (st.priming) {
+        if (ev.subtype !== 'success') { // a failed warm-up must not fake a ready agent — kill it and let onExit retry or go dead
+          log('priming failed (' + (ev.subtype || 'unknown') + ')');
+          try { st.child.kill('SIGKILL'); } catch (e) {}
+          return;
+        }
         st.priming = false; st.boots = 0;
         setState('ready', 'primed on ' + path.basename(HTML));
         dispatch();
