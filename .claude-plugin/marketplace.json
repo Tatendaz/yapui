@@ -1,5 +1,6 @@
 {
   "name": "yapui-marketplace",
+  "description": "YapUI — live HTML preview for Claude Code with an instant in-browser feedback loop (talk, point, record, screenshot, type).",
   "owner": {
     "name": "Tatendaz",
     "url": "https://github.com/Tatendaz"
