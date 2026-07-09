@@ -36,19 +36,27 @@ It's not just a live server. It's the *conversation* on top of one.
 
 ### For humans
 
-**Option A — personal skill (all your projects, simplest):**
+**Option A — one command, via [skills.sh](https://www.skills.sh):**
+
+```bash
+npx skills add tatendaz/yapui        # this project — or add -g for all your projects
+```
+
+Works for Claude Code, Cursor, Codex, and dozens of other agents — the CLI asks which to install to.
+
+**Option B — personal skill (all your projects):**
 
 ```bash
 git clone https://github.com/Tatendaz/yapui ~/.claude/skills/yapui
 ```
 
-**Option B — project skill (just one repo, shareable with your team):**
+**Option C — project skill (just one repo, shareable with your team):**
 
 ```bash
 git clone https://github.com/Tatendaz/yapui .claude/skills/yapui
 ```
 
-**Option C — as a plugin (inside Claude Code):**
+**Option D — as a plugin (inside Claude Code):**
 
 ```text
 /plugin marketplace add Tatendaz/yapui
@@ -60,8 +68,10 @@ Claude Code picks up new skills live — no restart needed (only a brand-new top
 **Update / uninstall:**
 
 ```bash
-git -C ~/.claude/skills/yapui pull      # update
+git -C ~/.claude/skills/yapui pull      # update (git installs)
 rm -rf ~/.claude/skills/yapui           # uninstall — YapUI keeps no other state
+npx skills update                       # update, if installed via skills.sh
+npx skills remove yapui                 # uninstall, if installed via skills.sh
 ```
 
 ### For agents

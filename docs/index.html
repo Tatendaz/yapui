@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YapUI — live HTML preview for Claude Code with an in-browser feedback loop</title>
+<meta name="description" content="YapUI is a Claude Code skill: preview any HTML on localhost and give feedback by talking, pointing, recording, screenshotting, or typing. A resident Claude agent applies the fix in seconds and replies right in the page. Zero dependencies, MIT.">
+<link rel="canonical" href="https://tatendaz.github.io/yapui/">
+<!-- Google Search Console verification tag goes here once the property is created:
+     <meta name="google-site-verification" content="TOKEN"> -->
+<meta name="theme-color" content="#0d0f12">
+<meta property="og:type" content="website">
+<meta property="og:title" content="YapUI — yap at your UI, watch Claude rebuild it live">
+<meta property="og:description" content="Live HTML preview for Claude Code with an instant in-browser feedback loop: talk, point, record, screenshot, type. Zero dependencies, MIT.">
+<meta property="og:url" content="https://tatendaz.github.io/yapui/">
+<meta property="og:image" content="https://tatendaz.github.io/yapui/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="YapUI — yap at your UI, watch Claude rebuild it live">
+<meta name="twitter:description" content="Live HTML preview for Claude Code with an instant in-browser feedback loop: talk, point, record, screenshot, type. Zero dependencies, MIT.">
+<meta name="twitter:image" content="https://tatendaz.github.io/yapui/social-preview.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%97%A3%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "YapUI",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS, Linux, Windows",
+  "description": "A Claude Code skill that serves any HTML file on localhost with a live two-way feedback loop: talk, point, record, screenshot, or type a note and a resident Claude agent applies the fix in seconds.",
+  "url": "https://tatendaz.github.io/yapui/",
+  "downloadUrl": "https://github.com/Tatendaz/yapui",
+  "license": "https://github.com/Tatendaz/yapui/blob/main/LICENSE",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0d0f12; --panel: #16191e; --border: rgba(255,255,255,0.11);
+    --text: #f2efe9; --muted: #9a948a; --accent: #d97757; --green: #4cc38a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #faf7f2; --panel: #ffffff; --border: rgba(0,0,0,0.12);
+      --text: #1c1a17; --muted: #6b665e; --accent: #c05f3d; --green: #1f8a56;
+    }
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 64px 24px 80px; }
+  header { text-align: center; margin-bottom: 48px; }
+  h1 { font-size: clamp(44px, 8vw, 72px); font-weight: 800; letter-spacing: -1.5px; }
+  h1 .mark { color: var(--accent); }
+  .tagline { font-size: clamp(20px, 3.5vw, 28px); font-weight: 600; color: var(--muted); margin-top: 10px; }
+  .tagline b { color: var(--text); }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 28px; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 700;
+    text-decoration: none; font-size: 16px;
+  }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.ghost { border: 1px solid var(--border); color: var(--text); }
+  .install {
+    margin: 18px auto 0; max-width: 560px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 15px; text-align: left; overflow-x: auto; white-space: nowrap;
+  }
+  .install .c { color: var(--muted); }
+  .demo { width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--border); display: block; }
+  figcaption { text-align: center; color: var(--muted); font-size: 15px; margin-top: 10px; }
+  h2 { font-size: 26px; font-weight: 800; margin: 56px 0 16px; letter-spacing: -0.5px; }
+  ul.features { list-style: none; display: grid; gap: 12px; }
+  ul.features li {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px;
+  }
+  ul.features b { display: block; }
+  pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-size: 14.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.7;
+  }
+  pre .c { color: var(--muted); }
+  a { color: var(--accent); }
+  .fact { color: var(--muted); }
+  footer { margin-top: 64px; text-align: center; color: var(--muted); font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🗣️ Yap<span class="mark">UI</span></h1>
+    <p class="tagline">Yap at your UI. <b>Watch Claude rebuild it live.</b></p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Tatendaz/yapui">GitHub →</a>
+      <a class="btn ghost" href="https://github.com/Tatendaz/yapui/releases">Releases</a>
+    </div>
+    <div class="install"><span class="c"># Claude Code, Cursor, Codex + dozens more</span><br>npx skills add tatendaz/yapui</div>
+  </header>
+
+  <figure>
+    <img class="demo" src="demo.gif" alt="YapUI demo: a spoken note asking to make the hero bigger and the button red is applied to the live page by a resident Claude agent in about four seconds" width="1386" height="868">
+    <figcaption>Say "make the hero bigger and the button red" — and watch it happen.</figcaption>
+  </figure>
+
+  <h2>What it is</h2>
+  <p>YapUI is a <a href="https://code.claude.com/docs/en/skills">Claude Code skill</a> that serves any HTML file over <code>http://localhost</code>, injects a feedback widget, and keeps a <b>resident, pre-warmed Claude agent</b> listening. <code>open file.html</code> is a dead end — <code>file://</code> blocks the mic and screen capture, and every change means typing it all back into the terminal. YapUI replaces that round-trip with a live, two-way conversation on top of your page.</p>
+
+  <h2>What you can do</h2>
+  <ul class="features">
+    <li><b>🎙 Talk to your page</b> Dictate a change out loud while pointing at the thing you mean.</li>
+    <li><b>🎯 Point &amp; pick</b> Click an element to attach it to your note, so "make <i>this</i> bigger" just works.</li>
+    <li><b>🎬 Record · 📸 Snap · ⌨️ Type</b> Capture a janky animation, screenshot a glitch, or send a plain note.</li>
+    <li><b>🔁 It replies in the browser</b> Your note flips to working in ~40&nbsp;ms, the fix lands in seconds, and the page refreshes itself.</li>
+  </ul>
+
+  <h2>Install</h2>
+  <pre><span class="c"># one command (via skills.sh) — or pick another option in the README</span>
+npx skills add tatendaz/yapui
+
+<span class="c"># git clone, as a personal Claude Code skill</span>
+git clone https://github.com/Tatendaz/yapui ~/.claude/skills/yapui
+
+<span class="c"># or as a Claude Code plugin</span>
+/plugin marketplace add Tatendaz/yapui</pre>
+  <p class="fact">Then just ask Claude to <i>"preview index.html"</i>. Plain Node, <b>zero npm dependencies</b>, MIT. Everything runs locally — your HTML, notes, recordings, and screenshots never leave your machine.</p>
+
+  <footer>
+    MIT © <a href="https://github.com/Tatendaz">Tatendaz</a> ·
+    <a href="https://github.com/Tatendaz/yapui">Source</a> ·
+    <a href="https://github.com/Tatendaz/yapui/issues/new/choose">Report a bug</a>
+  </footer>
+</div>
+</body>
+</html>
