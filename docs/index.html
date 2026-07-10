@@ -23,6 +23,39 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is YapUI?",
+      "acceptedAnswer": { "@type": "Answer", "text": "YapUI is an open-source Claude Code skill that previews any HTML file in your browser and lets you request changes by talking, pointing, recording, screenshotting, or typing — a resident Claude agent applies each fix in seconds and replies right in the page." }
+    },
+    {
+      "@type": "Question",
+      "name": "How is YapUI different from live-server or a live-preview extension?",
+      "acceptedAnswer": { "@type": "Answer", "text": "A live server only refreshes the page when files change; YapUI adds the other direction — a feedback widget in the page sends your spoken, pointed, or typed notes to a resident Claude agent that edits the HTML for you, so the conversation and the preview happen in one place." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does YapUI work with Claude Code?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — YapUI is built as a Claude Code skill, and its instant mode runs on the Claude Code CLI; without the CLI it falls back to a watcher mode driven by your main Claude session." }
+    },
+    {
+      "@type": "Question",
+      "name": "Is YapUI free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — YapUI is MIT-licensed open source with zero npm dependencies, and everything runs locally on your machine; you only need your own Claude Code for instant mode." }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I install YapUI?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Run npx skills add tatendaz/yapui, git clone the repo into ~/.claude/skills/yapui, or add it as a Claude Code plugin with /plugin marketplace add Tatendaz/yapui followed by /plugin install yapui@yapui-marketplace — then just ask Claude to preview an HTML file." }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "YapUI",
   "applicationCategory": "DeveloperApplication",
@@ -85,6 +118,9 @@
   pre .c { color: var(--muted); }
   a { color: var(--accent); }
   .fact { color: var(--muted); }
+  .faq h3 { font-size: 18px; font-weight: 700; margin: 24px 0 6px; letter-spacing: -0.2px; }
+  .faq p { color: var(--muted); }
+  .faq p b, .faq p code { color: var(--text); }
   footer { margin-top: 64px; text-align: center; color: var(--muted); font-size: 15px; }
 </style>
 </head>
@@ -124,8 +160,23 @@ npx skills add tatendaz/yapui
 git clone https://github.com/Tatendaz/yapui ~/.claude/skills/yapui
 
 <span class="c"># or as a Claude Code plugin</span>
-/plugin marketplace add Tatendaz/yapui</pre>
+/plugin marketplace add Tatendaz/yapui
+/plugin install yapui@yapui-marketplace</pre>
   <p class="fact">Then just ask Claude to <i>"preview index.html"</i>. Plain Node, <b>zero npm dependencies</b>, MIT. Everything runs locally — your HTML, notes, recordings, and screenshots never leave your machine.</p>
+
+  <section class="faq">
+    <h2>FAQ</h2>
+    <h3>What is YapUI?</h3>
+    <p>YapUI is an open-source <b>Claude Code skill</b> that previews any HTML file in your browser and lets you request changes by talking, pointing, recording, screenshotting, or typing — a resident Claude agent applies each fix in seconds and replies right in the page.</p>
+    <h3>How is YapUI different from live-server or a live-preview extension?</h3>
+    <p>A live server only refreshes the page when files change; YapUI adds the other direction — a feedback widget in the page sends your spoken, pointed, or typed notes to a resident Claude agent that <b>edits the HTML for you</b>, so the conversation and the preview happen in one place.</p>
+    <h3>Does YapUI work with Claude Code?</h3>
+    <p>Yes — YapUI is built as a Claude Code skill, and its instant mode runs on the <a href="https://claude.com/claude-code">Claude Code CLI</a>; without the CLI it falls back to a watcher mode driven by your main Claude session.</p>
+    <h3>Is YapUI free?</h3>
+    <p>Yes — YapUI is MIT-licensed open source with zero npm dependencies, and everything runs locally on your machine; you only need your own Claude Code for instant mode.</p>
+    <h3>How do I install YapUI?</h3>
+    <p>Run <code>npx skills add tatendaz/yapui</code>, git clone the repo into <code>~/.claude/skills/yapui</code>, or add it as a Claude Code plugin with <code>/plugin marketplace add Tatendaz/yapui</code> followed by <code>/plugin install yapui@yapui-marketplace</code> — then just ask Claude to preview an HTML file.</p>
+  </section>
 
   <footer>
     MIT © <a href="https://github.com/Tatendaz">Tatendaz</a> ·
