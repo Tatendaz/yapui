@@ -3,6 +3,9 @@
   "version": "0.2.0",
   "description": "Yap at your UI — live HTML preview with an instant two-way feedback loop for Claude Code.",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "node test/e2e.test.js"
   },

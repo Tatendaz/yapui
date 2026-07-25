@@ -1,3 +1,44 @@
+# ============================================================================
+#  ⚠️  THE JOB NAME AND THE NODE MATRIX ARE COUPLED TO THE BRANCH RULESET.
+#      DO NOT CHANGE EITHER ONE WITHOUT UPDATING THE RULESET IN THE SAME CHANGE.
+# ============================================================================
+#
+# The active ruleset `protect-main` on this repo requires these two status
+# check contexts BY NAME, verbatim:
+#
+#     test (20)
+#     test (22)
+#
+# Those exact strings are produced by `jobs.test.name` below —
+# `test (${{ matrix.node }})` expanded once per value in `matrix.node`.
+# Because an explicit `name:` is set, GitHub uses that literal string as the
+# check-run name and does NOT append its own matrix suffix.
+#
+# So all three of these are load-bearing: the `test:` job key, the `name:`
+# expression, and the values in `matrix.node`. Change any of them and the
+# gate breaks silently in one of two directions:
+#
+#   * ADDING a Node version (e.g. 24)  -> `test (24)` runs but is NOT required.
+#     A red Node 24 leg merges anyway. The gate looks bigger; it is not.
+#   * REMOVING or RENAMING a version   -> `test (20)` never reports, the ruleset
+#     waits for it forever, and EVERY pull request is blocked from merging with
+#     no way to clear it short of an admin editing the ruleset.
+#
+# Correct procedure for changing the matrix — the ruleset must move in lockstep:
+#   1. PR that ADDS the new version (matrix becomes a superset). Old contexts
+#      still report, so nothing is blocked. Merge it.
+#   2. Update `protect-main` -> required_status_checks to the new context list.
+#   3. PR that REMOVES the retired version. Merge it.
+# Never do step 3 before step 2.
+#
+# PENDING RECOMMENDATION (not applied here — needs step 1/2/3 above):
+#   Node 20 reached end-of-life in April 2026 and no longer gets security
+#   patches. The matrix should become [22, 24] and `engines.node` in
+#   package.json should become ">=22". That is deliberately NOT done in this
+#   change, because it cannot be done safely without editing the ruleset in
+#   the same window.
+# ============================================================================
+
 name: test
 
 on:
@@ -5,19 +46,101 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege, declared rather than inherited. The repo-wide default is
+# already `read`, but declaring it here means the guarantee survives someone
+# flipping that default to `write`. No job in this file writes anything.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same pull request — pushing a fixup should not
+# leave the previous pair of jobs burning runners.
+#
+# Runs on `main` are deliberately NOT cancelled. Direct pushes to `main` (repo
+# admins can bypass the ruleset) never go through a pull request, so this push
+# run is the only CI signal that commit will ever get. Losing it to a
+# cancellation would leave a commit on `main` with no test result at all.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
+    # vvv RULESET-REQUIRED CONTEXT — expands to "test (20)" / "test (22)". vvv
+    # vvv Read the header before touching this line or `matrix.node`.     vvv
     name: test (${{ matrix.node }})
     runs-on: ubuntu-latest
+    # The suite spawns child relays and polls with waitFor(..., 8000) loops.
+    # A wedged child would otherwise hang the runner until the 6-hour default.
+    timeout-minutes: 10
     strategy:
+      # Report every Node version. Without this, a Node 20 failure cancels the
+      # Node 22 leg, `test (22)` reports as cancelled, and the ruleset blocks
+      # the PR on a check that never actually ran.
+      fail-fast: false
       matrix:
         node: [20, 22]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        # actions/checkout v4.4.0 — SHA-pinned; this is the exact commit that
+        # the floating `v4` tag resolved to when it was pinned, so behaviour is
+        # unchanged, it just can no longer be moved out from under us.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          # Keep the job's GITHUB_TOKEN out of .git/config so nothing later in
+          # the job (or in a compromised action) can reuse it.
           persist-credentials: false
-      - uses: actions/setup-node@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        # actions/setup-node v4.4.0 — SHA-pinned, same reasoning as above.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node }}
-      # zero runtime dependencies — no install step, the suite runs against a fake claude binary
-      - run: npm test
+          # No `cache:` — there is no lockfile and there are zero dependencies.
+          # Enabling it would fail the step looking for package-lock.json.
+
+      # "Zero dependencies" is an advertised feature and CONTRIBUTING.md ground
+      # rule #1, and `engines.node` is the only machine-readable statement of
+      # the supported Node range. Both are asserted here so they cannot drift
+      # silently — including drifting apart from this very matrix.
+      - name: Assert package invariants (zero deps, engines matches this leg)
+        run: |
+          node -e '
+            const p = require("./package.json");
+
+            const deps = Object.keys(p.dependencies || {}).concat(Object.keys(p.devDependencies || {}));
+            if (deps.length) {
+              console.error("FAIL: dependencies were added: " + deps.join(", "));
+              console.error("Zero dependencies is a product constraint (CONTRIBUTING.md ground rule 1).");
+              console.error("Drop the dependency, or land a package-lock.json + an `npm ci` step first.");
+              process.exit(1);
+            }
+            console.log("ok: zero dependencies");
+
+            const range = (p.engines || {}).node;
+            if (!range) {
+              console.error("FAIL: package.json has no engines.node — the supported Node range would exist only in this CI matrix.");
+              process.exit(1);
+            }
+            const m = /^>=\s*(\d+)$/.exec(String(range).trim());
+            if (!m) {
+              console.error("FAIL: engines.node is " + JSON.stringify(range) + "; this check only understands the \">=N\" form it is written in.");
+              console.error("Update this step if the range format changes on purpose.");
+              process.exit(1);
+            }
+            const floor = Number(m[1]);
+            const running = Number(process.versions.node.split(".")[0]);
+            if (running < floor) {
+              console.error("FAIL: this matrix leg runs Node " + running + " but engines.node says " + range + ".");
+              console.error("package.json and the matrix in this workflow have drifted apart. Fix one of them.");
+              console.error("Remember: changing the matrix also requires updating the protect-main ruleset. See the header of this file.");
+              process.exit(1);
+            }
+            console.log("ok: Node " + running + " satisfies engines.node " + range);
+          '
+
+      # No install step: zero dependencies, and the suite runs entirely offline
+      # against test/fake-claude.js, a stdin/stdout stand-in for the real
+      # `claude` CLI. No API key, no network egress, no secrets — which is why
+      # `permissions: contents: read` is enough for a fork PR to run this.
+      - name: Run tests
+        run: npm test
