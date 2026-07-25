@@ -2,9 +2,9 @@
 
 # 🗣️ YapUI
 
-## Yap at your UI. Watch Claude rebuild it live.
+**Yap at your UI. Watch Claude rebuild it live.**
 
-Preview any HTML in your browser and give feedback by **talking, pointing, recording, screenshotting, or typing** — a resident [Claude Code](https://claude.com/claude-code) agent picks it up the instant you hit send, fixes it, and replies right in the page. In instant mode you never go back to the terminal.
+**YapUI is a [Claude Code](https://claude.com/claude-code) skill.** Preview any HTML in your browser and give feedback by **talking, pointing, recording, screenshotting, or typing** — a resident agent picks it up the instant you hit send, fixes it, and replies right in the page. In instant mode you never go back to the terminal.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg)](LICENSE)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-d97757.svg)](https://code.claude.com/docs/en/skills)
@@ -33,6 +33,14 @@ YapUI replaces that with a **live, two-way feedback loop**:
 It's not just a live server. It's the *conversation* on top of one.
 
 ## Install
+
+**Before you start:**
+
+- **Node.js** — the relay is plain Node with zero dependencies.
+- **Claude Code** (`claude` on PATH) for instant mode — without it YapUI falls back to watcher mode.
+- A **Chromium-based browser** (Chrome / Edge / Brave) for voice + screen recording (Web Speech + `getDisplayMedia`).
+- **`ffmpeg`** — only if you want Claude to read screen recordings.
+- Internet access for the screenshot library (`html2canvas`, loaded via CDN).
 
 ### For humans
 
@@ -63,18 +71,20 @@ git clone https://github.com/Tatendaz/yapui .claude/skills/yapui
 /plugin install yapui@yapui-marketplace
 ```
 
-Claude Code picks up new skills live — no restart needed (only a brand-new top-level `skills/` folder requires one). Verify with `/yapui` showing up in the slash-command list, or just ask Claude to *"preview some HTML"*.
+However you install it, Claude Code loads YapUI **on the next session** — not live. Restart Claude Code, or run `/reload-plugins` to pick it up right away. Then verify: `/yapui` should be there whichever route you took. In `/plugin` the name depends on the route — options A–C appear under *Skills-directory plugins* as `yapui@skills-dir`, option D under its marketplace as `yapui@yapui-marketplace`. Or just ask Claude to *"preview some HTML"*.
 
 **Update / uninstall:**
 
 ```bash
 git -C ~/.claude/skills/yapui pull      # update (personal install)
 git -C .claude/skills/yapui pull        # update (project install)
-npx skills update                       # update (skills.sh installs)
-rm -rf ~/.claude/skills/yapui           # uninstall — YapUI keeps no other state
+npx skills update -g                    # update (skills.sh) — drop -g if you installed without it
+rm -rf ~/.claude/skills/yapui           # uninstall (personal install)
 rm -rf .claude/skills/yapui             # uninstall (project install)
-npx skills remove yapui                 # uninstall (skills.sh installs)
+npx skills remove yapui -g              # uninstall (skills.sh) — drop -g if you installed without it
 ```
+
+`skills update` / `skills remove` default to *project* scope inside a project, so an install made with `-g` needs `-g` here too. Removing the skill also leaves your artifacts behind: a `.yapui/` folder sits next to every HTML file you previewed, and screen recordings there can reach 200 MB apiece. Delete those separately.
 
 ### For agents
 
@@ -105,11 +115,11 @@ open my mockup in the browser
 
 Claude launches the local relay, opens the page — and the relay boots a **resident, pre-warmed Claude agent** that owns the feedback loop. Then, in the browser:
 
-1. Hit the **Feedback** button (bottom-left, or press `f`).
+1. The feedback panel is **already open** on first load — nothing to click. (Close it and a **Feedback** button takes its place bottom-left; that button, or the `f` key, reopens the panel. A deliberate close is remembered across reloads.)
 2. Choose **⌨️ type · 🎙 Talk · 🎬 Record · 📸 Snap · 🎯 Pick** and send.
 3. Your note flips to 🟠 working in **~40 ms**, with a live line showing what the agent is doing ("✏️ editing index.html…"). Cards go 🔴 queued → 🟠 working → ✅ done; when every card is green, the page auto-refreshes with your changes.
 
-Mic / screen-share prompts are normal — **everything stays on your machine.**
+Mic / screen-share prompts are normal — the browser needs them for 🎙 Talk and 🎬 Record. For what is and isn't sent anywhere, see [What leaves your machine](#what-leaves-your-machine).
 
 ## Why it's fast
 
@@ -151,14 +161,6 @@ Set these on the relay process:
 
 The agent runs `--permission-mode acceptEdits` restricted to `Read,Edit,Write,MultiEdit,Grep,Glob` (no shell — the relay pre-extracts recording frames itself), working only in the served HTML's directory — it can edit files there without prompting, and nothing else.
 
-## Requirements
-
-- **Node.js** — the relay is plain Node with zero dependencies.
-- **Claude Code** (`claude` on PATH) for instant mode — without it YapUI falls back to watcher mode.
-- A **Chromium-based browser** (Chrome / Edge / Brave) for voice + screen recording (Web Speech + `getDisplayMedia`).
-- **`ffmpeg`** — only if you want Claude to read screen recordings.
-- Internet access for the screenshot library (`html2canvas`, loaded via CDN).
-
 ## Troubleshooting
 
 | Symptom | Likely cause / fix |
@@ -169,25 +171,9 @@ The agent runs `--permission-mode acceptEdits` restricted to `Read,Edit,Write,Mu
 | Recording sent but Claude "didn't see" it | Install `ffmpeg` — the relay uses it to extract frames for the agent. |
 | Changes not appearing | Cards must all be ✅ before the auto-refresh; check the task queue panel. Manual refresh always shows the latest file. |
 
-Everything runs locally: your HTML, notes, recordings, and screenshots never leave your machine (the only network fetch is the `html2canvas` CDN script).
+## What leaves your machine
 
-## Repo layout
-
-```
-yapui/
-├── SKILL.md              # the skill: launch, mode check, watcher fallback
-├── relay/
-│   ├── server.js         # local HTTP relay + widget injector + SSE push
-│   ├── agent.js          # resident pre-warmed fix agent (headless claude)
-│   ├── widget.js         # in-browser feedback panel + live status UI
-│   └── flip-status.js    # queue-card status driver (fallback mode)
-├── test/
-│   ├── e2e.test.js       # full-loop tests (npm test) — no API calls
-│   └── fake-claude.js    # deterministic stand-in for the claude CLI
-└── .claude-plugin/       # makes it /plugin-installable
-    ├── plugin.json
-    └── marketplace.json
-```
+Your HTML, notes, recordings and screenshots are **stored** locally, in `.yapui/` next to the page — the relay has no backend and uploads nothing. But instant mode *is* a Claude agent, so it sends what a Claude agent sends: `relay/agent.js` spawns the `claude` CLI and pipes each note — with the element you picked, the cursor trail and the spoken-word timeline — into its stdin, then points it at your screenshot and the extracted recording frames to read from disk. That prompt, and whatever it reads out of your HTML, goes to the Anthropic API under **your own** Claude Code account and its data-retention settings — the same trip your terminal session already makes. Watcher mode routes the note through your main Claude session instead, which is the same trip by a different road. The only non-model request YapUI itself makes is the `html2canvas` CDN script, fetched the first time you hit 📸 Snap — the `claude` CLI's own traffic (auth, updates) is its own, and unchanged by YapUI.
 
 ## Tests
 

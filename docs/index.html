@@ -43,7 +43,7 @@
     {
       "@type": "Question",
       "name": "Is YapUI free?",
-      "acceptedAnswer": { "@type": "Answer", "text": "Yes — YapUI is MIT-licensed open source with zero npm dependencies, and everything runs locally on your machine; you only need your own Claude Code for instant mode." }
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes — YapUI is MIT-licensed open source with zero npm dependencies, and there is no YapUI service to pay for. The relay runs locally and keeps your notes, recordings and screenshots on your own machine, but fixes are applied by the Claude Code CLI, so each note and the HTML it edits go to the Anthropic API under your own Claude Code account — the same way a normal Claude Code session does." }
     },
     {
       "@type": "Question",
@@ -162,7 +162,7 @@ git clone https://github.com/Tatendaz/yapui ~/.claude/skills/yapui
 <span class="c"># or as a Claude Code plugin</span>
 /plugin marketplace add Tatendaz/yapui
 /plugin install yapui@yapui-marketplace</pre>
-  <p class="fact">Then just ask Claude to <i>"preview index.html"</i>. Plain Node, <b>zero npm dependencies</b>, MIT. Everything runs locally — your HTML, notes, recordings, and screenshots never leave your machine.</p>
+  <p class="fact">Then just ask Claude to <i>"preview index.html"</i>. Plain Node, <b>zero npm dependencies</b>, MIT. The relay has no backend: your HTML, notes, recordings and screenshots are stored locally in <code>.yapui/</code>. Fixes are applied by <b>your own</b> Claude Code, so each note and the page it edits go to the Anthropic API under your account — the same trip your terminal session already makes.</p>
 
   <section class="faq">
     <h2>FAQ</h2>
@@ -173,7 +173,7 @@ git clone https://github.com/Tatendaz/yapui ~/.claude/skills/yapui
     <h3>Does YapUI work with Claude Code?</h3>
     <p>Yes — YapUI is built as a Claude Code skill, and its instant mode runs on the <a href="https://claude.com/claude-code">Claude Code CLI</a>; without the CLI it falls back to a watcher mode driven by your main Claude session.</p>
     <h3>Is YapUI free?</h3>
-    <p>Yes — YapUI is MIT-licensed open source with zero npm dependencies, and everything runs locally on your machine; you only need your own Claude Code for instant mode.</p>
+    <p>Yes — YapUI is MIT-licensed open source with zero npm dependencies, and there is no YapUI service to pay for. The relay runs locally and keeps your notes, recordings and screenshots on your own machine, but fixes are applied by the Claude Code CLI, so each note and the HTML it edits go to the Anthropic API under your own Claude Code account — the same way a normal Claude Code session does.</p>
     <h3>How do I install YapUI?</h3>
     <p>Run <code>npx skills add tatendaz/yapui</code>, git clone the repo into <code>~/.claude/skills/yapui</code>, or add it as a Claude Code plugin with <code>/plugin marketplace add Tatendaz/yapui</code> followed by <code>/plugin install yapui@yapui-marketplace</code> — then just ask Claude to preview an HTML file.</p>
   </section>
