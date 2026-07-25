@@ -5,8 +5,8 @@ feedback modes and browser-state polish.
 
 ## Dev setup (30 seconds)
 
-[Fork the repo](https://github.com/Tatendaz/yapui/fork) first — `main` is protected and
-nobody pushes to it directly, so you'll be working from your own copy.
+[Fork the repo](https://github.com/Tatendaz/yapui/fork) first — `main` takes changes only
+through a pull request, so you'll be working from your own copy.
 
 ```bash
 git clone https://github.com/<your-username>/yapui
@@ -70,7 +70,7 @@ git checkout -b feat/pick-multiple-elements
 
 **Every PR carries its own docs pair**, dated and named after the branch slug:
 
-```
+```text
 docs/features/2026-07-25-pick-multiple-elements.md    # what changed and why
 docs/summaries/2026-07-25-pick-multiple-elements.md   # the prompts, steps and decisions
 ```
@@ -86,7 +86,7 @@ deploy — check `docs/index.html` renders before you ask for review.
 
 ## Review process
 
-`main` is protected. Pull requests are the only way in, and every PR needs all four of:
+Merging to `main` requires a pull request, plus all four of:
 
 - **`test (20)` and `test (22)` green.** These two checks are required by name. A red leg
   on either Node version blocks the merge; there is no override.
@@ -101,7 +101,9 @@ deploy — check `docs/index.html` renders before you ask for review.
   needs a fresh one, so get the diff settled before you ask for review.
 
 (The repository admin holds a bypass on this ruleset for emergency fixes. Everything above
-is exactly what a contributor's PR has to clear.)
+is exactly what a contributor's PR has to clear. The ruleset itself is applied when the
+change that introduced this file lands — if you're reading this on that PR, the list is
+the agreed policy rather than something GitHub is already blocking on.)
 
 **First PR here? Your checks will look stuck, and that's normal.** GitHub holds workflow
 runs from first-time contributors until a maintainer clicks "Approve and run", so
