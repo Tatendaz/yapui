@@ -1,8 +1,10 @@
 # What leaves your machine
 
 Short version: YapUI has no backend and uploads nothing. But applying a fix *is* a Claude
-agent, so instant mode sends what a Claude agent sends — under your own Claude Code
-account, on the same trip your terminal session already makes.
+agent, so instant mode sends what a Claude agent sends — to the same API, under your own
+Claude Code account, subject to your own retention settings. The destination is the one
+your terminal sessions already use; the payload is richer, because a screenshot and a
+cursor trail are not things you would normally type.
 
 ## Stored locally, sent nowhere by YapUI
 
@@ -27,8 +29,8 @@ stdin. That prompt carries:
 recording frames and whatever the agent reads out of your page all go to the Anthropic API,
 under **your own** Claude Code account and its data-retention settings.
 
-Watcher mode routes the note through your main Claude session instead. Same trip, different
-road.
+Watcher mode routes the note through your main Claude session instead. Same destination,
+different road.
 
 The agent runs with an empty, strict MCP config, so nothing reaches your configured MCP
 servers. See [what the agent is allowed to do](configuration.md#what-the-agent-is-allowed-to-do).

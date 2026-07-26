@@ -58,7 +58,7 @@ Requirements in full, all four routes, verification, update and uninstall →
 
 Ask Claude to preview some HTML — or invoke the skill directly with `/yapui`:
 
-```
+```text
 preview index.html
 ```
 
