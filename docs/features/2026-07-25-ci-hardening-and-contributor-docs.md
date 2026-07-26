@@ -52,9 +52,12 @@ merge on a check that never reports again.
   contributor workflow-approval wait.
 - `.github/pull_request_template.md` — branch naming, the docs pair, and a no-secrets item
   added; the existing repo-specific items kept.
-- Repo settings (outside this diff): `protect-main` updated to
+- Repo settings (outside this diff, **planned — applied when this lands, not
+  yet in effect**): `protect-main` to be updated to
   `required_approving_review_count: 1` with `require_code_owner_review`,
   `dismiss_stale_reviews_on_push` and `require_last_push_approval` all on.
+  The ruleset itself already exists and already requires `test (20)` and
+  `test (22)`; today it requires zero approvals, which is what changes.
 
 ## Notes
 The Node matrix is unchanged on purpose. Node 20 reached end-of-life in April 2026 and

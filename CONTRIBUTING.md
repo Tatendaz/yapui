@@ -89,7 +89,7 @@ deploy — check `docs/index.html` renders before you ask for review.
 Merging to `main` requires a pull request, plus all four of:
 
 - **`test (20)` and `test (22)` green.** These two checks are required by name. A red leg
-  on either Node version blocks the merge; there is no override.
+  on either Node version blocks the merge; no contributor can override it.
 - **One approving review from a code owner** (@Tatendaz — see `.github/CODEOWNERS`). You
   cannot approve your own PR; GitHub doesn't allow it. So every contribution really does
   get a second pair of eyes.

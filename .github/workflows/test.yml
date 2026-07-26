@@ -3,8 +3,10 @@
 #      DO NOT CHANGE EITHER ONE WITHOUT UPDATING THE RULESET IN THE SAME CHANGE.
 # ============================================================================
 #
-# The active ruleset `protect-main` on this repo requires these two status
-# check contexts BY NAME, verbatim:
+# `protect-main` is already active on this repo and already requires these two
+# status check contexts BY NAME, verbatim (what the PR introducing this header
+# adds is the *approval* side of the ruleset — code-owner review, stale-approval
+# dismissal — not these contexts, which are enforced today):
 #
 #     test (20)
 #     test (22)

@@ -1,8 +1,9 @@
 <!--
 Thanks for contributing! Ticking the checklist before you push is the fastest
-route to a green build. Only the first item is enforced by CI (`test (20)` and
-`test (22)`); the rest are the conventions a reviewer will ask about anyway.
-See CONTRIBUTING.md.
+route to a green build. CI enforces the test item — `test (20)` and `test (22)`
+run the suite and also assert the zero-dependency and Node-engine invariants.
+Branch naming, the docs pair and the no-secrets item are conventions a reviewer
+checks by eye, not workflows. See CONTRIBUTING.md.
 -->
 
 ## What & why
