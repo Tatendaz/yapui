@@ -53,11 +53,17 @@
   account — true, and the answer had drifted into privacy content that belonged under its
   own question. Splitting them keeps each answer short enough to be lifted whole by an AI
   answer engine, which is the reason the FAQ exists.
-- **Left `.github/CODEOWNERS` alone.** CodeRabbit is right that one code owner makes the
-  required code-owner review unsatisfiable for @Tatendaz's own PRs, but that file came in
-  with #7 and is already on `main`; folding an unrelated governance fix into a README PR
-  is the grab-bag `CONTRIBUTING.md` warns against.
-- **Did not touch `relay/widget.js`.** Its footer still contradicts the README's "you
-  never go back to the terminal", and it is visible in every frame of the hero GIF. Still
-  out of scope, still needs a re-record — carried forward from the original PR body rather
-  than quietly dropped.
+- **Left `.github/CODEOWNERS` alone.** CodeRabbit flagged that a lone code owner makes the
+  required code-owner review unsatisfiable on @Tatendaz's own PRs. Checked the ruleset
+  rather than assuming: `protect-main` carries `bypass_actors: [{RepositoryRole 5 (admin),
+  always}]`, and @Tatendaz holds admin — so a self-opened PR merges through the documented
+  admin bypass, exactly as `CONTRIBUTING.md` describes. Contributor PRs are unaffected,
+  since @Tatendaz can approve those normally. Adding a second owner would only add a person
+  who does not exist. No change needed.
+- **Dropped the widget-footer "known issue" the original PR body carried.** It read
+  `relay/widget.js:96` ("Lands in your terminal session") as contradicting the README's
+  "you never go back to the terminal". Two reasons it isn't one. The README lead no longer
+  makes that claim — this rewrite cut it — so there is nothing left to contradict. And the
+  footer is true on its own terms: the note does reach your terminal session, and driving
+  YapUI from the terminal is a supported path, not a failure of the browser loop. No widget
+  change and no GIF re-record needed.
