@@ -31,7 +31,8 @@
 - Wrote `docs/guide/{install,how-it-works,configuration,troubleshooting,privacy}.md`,
   rewrote the README around them, and validated links, anchors, JSON-LD and the
   visible-vs-schema FAQ match by script.
-- Full suite green (29/29) before pushing.
+- Full suite green before pushing — 70 checks post-merge (the 29 originally recorded here
+  was the suite's size before `main`, with PR #7's expanded tests, was merged in).
 
 ## Decisions
 

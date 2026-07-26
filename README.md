@@ -27,8 +27,8 @@ the *conversation* on top of a live server.
 
 ## Install
 
-Needs **Node 20+**, a **Chromium browser** (Chrome / Edge / Brave) for voice and recording,
-and the **`claude` CLI** for instant mode. Pick one route:
+Needs **Node 20+**, a **Chromium browser** for screen recording (voice needs Chrome or
+Edge), and the **`claude` CLI** for instant mode. Pick one route:
 
 ```bash
 npx skills add tatendaz/yapui                                       # any agent — add -g for all your projects

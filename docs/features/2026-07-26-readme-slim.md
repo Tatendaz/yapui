@@ -70,7 +70,8 @@ reader; `docs/guide/` serves the reader who already said yes.
 - Both `ld+json` blocks parse, and all six visible Q&As match their `acceptedAnswer`
   verbatim — verified by script, not by eye.
 - Every relative link and anchor in `README.md` and `docs/guide/*.md` resolves.
-- Full suite: 29/29 passing. No relay code touched.
+- Full suite passing — `npm test`, 70 checks (29 was the pre-merge count; merging `main`
+  brought PR #7's expanded suite). No relay code touched.
 - CodeRabbit's `.github/CODEOWNERS` finding (a single code owner means @Tatendaz cannot
   satisfy the required code-owner review on their own PRs) is real but belongs to the
   already-merged #7, so it is left for its own change.

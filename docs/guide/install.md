@@ -10,9 +10,10 @@ back it out.
 | --- | --- | --- |
 | **Node 20+** | everything | The relay is plain Node with **zero npm dependencies** — no build step, no install. `engines.node` in `package.json`; CI runs 20 and 22. |
 | **Claude Code** (`claude` on PATH) | instant mode | Without it YapUI still works, in [watcher mode](how-it-works.md#watcher-fallback) — same UI, driven from your main Claude session. |
-| **A Chromium browser** (Chrome / Edge / Brave) | 🎙 Talk and 🎬 Record | These use Web Speech and `getDisplayMedia`. Typing, picking and screenshotting work anywhere. |
+| **A Chromium browser** (Chrome / Edge / Brave) | 🎬 Record | Screen recording uses `getDisplayMedia`, captured and stored locally. Typing, picking and screenshotting work in any browser. |
+| **Chrome or Edge** specifically | 🎙 Talk | Live dictation uses the browser's Web Speech service, which Brave doesn't ship — and the audio is transcribed by that service, in the cloud ([what leaves your machine](privacy.md#talk-goes-through-your-browsers-speech-service)). |
 | **`ffmpeg`** | Claude reading your screen recordings | The relay shells out to it to extract frames. Skip it and recordings still upload — the agent just goes by your note text. |
-| **Internet** | 📸 Snap only | Fetches `html2canvas` from a CDN, once, the first time you screenshot. |
+| **Internet** | 📸 Snap and 🎙 Talk | Snap fetches `html2canvas` from a CDN the first time you screenshot; Talk streams audio to the browser's speech service. (Instant-mode fixes are Claude API calls, so the `claude` CLI needs its usual access too.) |
 
 ## The four routes
 
@@ -116,8 +117,8 @@ rm -rf .claude/skills/yapui             # project clone
 npx skills remove yapui -g              # skills.sh — drop -g if you installed without it
 ```
 
-`skills update` and `skills remove` default to *project* scope when run inside a project,
-so an install made with `-g` needs `-g` here too.
+`skills update` and `skills remove` ask which scope to touch (and with `-y` they auto-pick
+project scope when run inside a project), so match the `-g` of your original install.
 
 Removing the skill leaves your artifacts behind. By default a `.yapui/` folder sits next
 to every HTML file you previewed (a custom [`WORKDIR`](configuration.md) puts it

@@ -39,7 +39,8 @@ instead of a resident one. It's slower (that's the dead air described above), bu
 breaks.
 
 The widget tells you which mode you're in, and `GET /agent` reports it for scripts:
-`ready` / `booting` mean the resident agent owns the loop, `off` means watcher mode.
+`ready`, `booting` and `busy` mean the resident agent owns the loop; `off` — or `dead`,
+after the agent has crashed three times in a row — means watcher mode.
 
 ## The feedback loop, end to end
 

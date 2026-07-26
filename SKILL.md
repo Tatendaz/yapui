@@ -32,7 +32,7 @@ Target HTML = **$HTML** (absolute path).
 5. **Check the mode:** `curl -s http://localhost:<port>/agent`
    - `"state":"ready"` or `"booting"` → **instant mode** (default). Do **NOT** arm a watcher — the resident agent owns feedback and a watcher would double-process it. You're done.
    - `"state":"off"` (no `claude` on PATH, or `YAP_AGENT=off`) → **watcher fallback** — arm the watcher below.
-6. **Tell the user** it's live and how to give feedback in the browser: the **Feedback** button (bottom-left, or press `f`) → **type · 🎙 Talk · 🎬 Record · 📸 Snap · 🎯 Pick**. Fixes are handled instantly by a live agent — they'll see each card flip 🔴→🟠 (with a live "✏️ editing…" ticker)→✅ and a reply toast, then the page auto-refreshes. Mic / screen-share prompts are normal; everything stays on their machine.
+6. **Tell the user** it's live and how to give feedback in the browser: the feedback panel opens already expanded (if they close it, the **Feedback** button bottom-left — or `f` — brings it back) → **type · 🎙 Talk · 🎬 Record · 📸 Snap · 🎯 Pick**. Fixes are handled instantly by a live agent — they'll see each card flip 🔴→🟠 (with a live "✏️ editing…" ticker)→✅ and a reply toast, then the page auto-refreshes. Mic / screen-share prompts are normal; artifacts are stored locally in the workdir, and what they send is applied by a Claude agent running on their own account (`docs/guide/privacy.md` is the full picture of what leaves the machine).
 
 ## Instant mode (default) — how it works, and your role
 
