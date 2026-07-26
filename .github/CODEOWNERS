@@ -1,0 +1,15 @@
+# Code owners for YapUI.
+#
+# This file is what makes `require_code_owner_review` on the `protect-main`
+# ruleset mean anything — without it there is no owner to request, and the
+# setting silently matches nothing.
+#
+# Effect, once `protect-main` carries `required_approving_review_count: 1` and
+# `require_code_owner_review` (that settings change is applied when this PR
+# lands — today the ruleset requires the two status checks but zero
+# approvals): every pull request automatically requests a review from
+# @Tatendaz and cannot merge until that review is approving. GitHub does not
+# let anyone approve their own pull request, so a contribution always gets a
+# second pair of eyes before it lands on `main`.
+
+* @Tatendaz
