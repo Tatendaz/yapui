@@ -64,14 +64,16 @@ Ask for `/yapui` in the slash-command list, or just tell Claude to *"preview som
 If it isn't there yet:
 
 - **Routes A–C** put a `SKILL.md` under a watched skills directory, and Claude Code picks
-  those up **in the current session** — no restart. The one exception is a *brand-new*
-  top-level `~/.claude/skills/` or `.claude/skills/` folder that didn't exist when the
-  session started: that directory isn't being watched yet, so restart once.
+  those up **in the current session** — no restart. (Route A can also install into
+  Cursor, Codex and other agents; each of those discovers skills its own way — this
+  section describes Claude Code.) The one exception is a *brand-new* top-level
+  `~/.claude/skills/` or `.claude/skills/` folder that didn't exist when the session
+  started: that directory isn't being watched yet, so restart once.
 - **Route D** is a marketplace install. Run `/reload-plugins`, or restart.
 
-YapUI also registers as a plugin, and *that* half loads on the next session either way. It
-shows up in `/plugin` as `yapui@skills-dir` for routes A–C and `yapui@yapui-marketplace`
-for route D. Nothing depends on it — YapUI ships one skill and no hooks, agents or MCP
+In Claude Code, YapUI also registers as a plugin, and *that* half loads on the next
+session either way. It shows up in `/plugin` as `yapui@skills-dir` for routes A–C and
+`yapui@yapui-marketplace` for route D. Nothing depends on it — YapUI ships one skill and no hooks, agents or MCP
 servers — so the skill working is the thing to check.
 
 ## Install from an agent

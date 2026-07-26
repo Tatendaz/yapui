@@ -1,8 +1,9 @@
 # What leaves your machine
 
-Short version: YapUI has no backend and uploads nothing. But applying a fix *is* a Claude
-agent, so instant mode sends what a Claude agent sends — to the same API, under your own
-Claude Code account, subject to your own retention settings. The destination is the one
+Short version: there is no hosted YapUI backend — the browser only ever uploads to the
+relay on your own machine. But applying a fix *is* a Claude agent, so instant mode sends
+what a Claude agent sends — to the same API, under your own Claude Code account, subject
+to your own retention settings. The destination is the one
 your terminal sessions already use; the payload is richer, because a screenshot and a
 cursor trail are not things you would normally type.
 

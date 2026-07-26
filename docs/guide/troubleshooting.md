@@ -3,7 +3,7 @@
 | Symptom | Likely cause / fix |
 | --- | --- |
 | `/yapui` isn't in the slash-command list | For a git-clone install, restart Claude Code once if you just created the `skills/` folder itself. For the plugin route, run `/reload-plugins`. See [Did it work?](install.md#did-it-work) |
-| Widget shows **watcher mode** instead of ⚡ instant | No `claude` on PATH (or `YAP_AGENT=off`). Instant mode needs the [Claude Code CLI](https://claude.com/claude-code); watcher mode still works from your main session. |
+| Widget shows **watcher mode** instead of ⚡ instant | No `claude` on PATH — or [`YAP_CLAUDE_BIN`](configuration.md) points at something that doesn't exist — or `YAP_AGENT=off`. Instant mode needs the [Claude Code CLI](https://claude.com/claude-code); watcher mode still works from your main session. |
 | Mic or screen-record button does nothing | Recording needs a Chromium-based browser (`getDisplayMedia`); voice needs Chrome or Edge — their Web Speech service does the transcription, and Brave doesn't ship one. The page must be on `http://localhost` — which YapUI does for you. Check the browser's permission prompt wasn't dismissed. |
 | Port already in use | The skill tries 8765 → 8766 → 8780 → 8790; set `PORT` yourself if you run the relay by hand. |
 | Recording sent but Claude "didn't see" it | Install `ffmpeg` — the relay uses it to extract frames for the agent. Without it, the agent goes by your note text alone. |

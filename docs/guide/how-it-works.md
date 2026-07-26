@@ -33,7 +33,8 @@ anywhere on the hot path.
 
 ## Watcher fallback
 
-No `claude` CLI on PATH, or `YAP_AGENT=off`? YapUI falls back to the classic watcher
+No usable CLI — nothing at [`YAP_CLAUDE_BIN`](configuration.md) if you set it, no
+`claude` on PATH otherwise — or `YAP_AGENT=off`? YapUI falls back to the classic watcher
 mode — same UI, same widget, same queue cards, driven from your main Claude session
 instead of a resident one. It's slower (that's the dead air described above), but nothing
 breaks.
