@@ -12,7 +12,8 @@ dependencies.
 | `SKILL.md` | Tells Claude how to launch the relay, check which mode is active (`GET /agent`), and run the watcher fallback when there's no resident agent. |
 
 Feedback artifacts — notes, recordings, screenshots — are written to a `.yapui/` folder
-next to your HTML. Safe to delete or gitignore.
+next to your HTML by default (override with [`WORKDIR`](configuration.md)). Safe to
+delete or gitignore.
 
 ## Why it's fast
 

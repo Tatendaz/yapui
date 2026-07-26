@@ -39,6 +39,7 @@ reader; `docs/guide/` serves the reader who already said yes.
   machine`, and `## Tests` — all relocated, none deleted outright.
 
 ### docs/guide/ (new)
+
 | File | Holds |
 | --- | --- |
 | `install.md` | Full requirements table, all four routes with their scope rules, verification, agent install, update, uninstall |

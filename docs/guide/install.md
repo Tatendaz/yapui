@@ -119,9 +119,10 @@ npx skills remove yapui -g              # skills.sh — drop -g if you installed
 `skills update` and `skills remove` default to *project* scope when run inside a project,
 so an install made with `-g` needs `-g` here too.
 
-Removing the skill leaves your artifacts behind. A `.yapui/` folder sits next to every
-HTML file you previewed, holding notes, screenshots and screen recordings — and a single
-recording can reach 200 MB. Delete those separately:
+Removing the skill leaves your artifacts behind. By default a `.yapui/` folder sits next
+to every HTML file you previewed (a custom [`WORKDIR`](configuration.md) puts it
+elsewhere), holding notes, screenshots and screen recordings — and a single recording can
+reach 200 MB. Delete those separately:
 
 ```bash
 find . -type d -name .yapui -prune -print   # look first

@@ -9,8 +9,9 @@ cursor trail are not things you would normally type.
 ## Stored locally, sent nowhere by YapUI
 
 Your HTML, your typed notes, your screenshots and your screen recordings are written to a
-`.yapui/` folder next to the page you previewed. The relay binds to `127.0.0.1`, there is
-no YapUI service, no telemetry, and no account.
+`.yapui/` folder next to the page you previewed by default ([`WORKDIR`](configuration.md)
+moves it). The relay binds to `127.0.0.1`, there is no YapUI service, no telemetry, and
+no account.
 
 Recordings there can reach 200 MB apiece, and they survive uninstalling the skill —
 [delete them yourself](install.md#uninstall) when you're done.
