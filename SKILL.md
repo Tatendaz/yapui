@@ -82,7 +82,7 @@ done; echo WATCH_IDLE_TIMEOUT
 Keep a short terminal note too, but the in-browser reply is the primary channel.
 
 ## Browser states the user sees
-- **Task queue (top-right)** — each note becomes a card: 🔴 queued → 🟠 ⛏️ working (with a live activity line: "✏️ editing index.html…") → ✅ done (🙋 needs-you). All cards green → the page auto-refreshes; ✕ removes a card. A 🖥 line under the header shows what their cursor is over.
+- **Task queue (bottom-right by default)** — each note becomes a card: 🔴 queued → 🟠 ⛏️ working (with a live activity line: "✏️ editing index.html…") → ✅ done (🙋 needs-you). All cards green → the page auto-refreshes; ✕ removes a card. A 🖥 line under the header shows what their cursor is over. Drag it by its header to move it anywhere (the spot sticks across reloads); the **▾** in its header collapses it to a status pill. The Feedback panel and button drag the same way.
 - **⚡ Claude is ready — instant fixes** (header, idle) — resident agent hot. Watcher fallback shows **👀 Claude is watching** instead.
 - **⟳ Claude is working on it…** (top-center) + the Feedback button glows — the instant they send.
 - **Claude: … — refresh to see** (top-center) — on reply, then back to ⚡/👀.

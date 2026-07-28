@@ -4,7 +4,10 @@
      • record the screen      • screenshot (html2canvas)
      • pick an element        (its exact identity in the code)
    Live updates arrive over SSE (/events) — task flips, agent activity and
-   replies push instantly; polling only kicks in as a fallback. */
+   replies push instantly; polling only kicks in as a fallback.
+   Both floating boxes — the Feedback panel/button and the task queue — can be
+   dragged anywhere (positions stick across reloads) and the queue collapses to
+   a pill, so neither ever has to sit on top of the page's own controls. */
 (function () {
   if (window.__kfb) return; window.__kfb = true;
 
@@ -45,10 +48,10 @@
     '#kfb-log{max-height:110px;overflow-y:auto;border-top:1px solid #EEF2F7;padding:4px 10px 8px}#kfb-log:empty{display:none}',
     '.kfb-item{font-size:12px;color:#46596F;padding:7px 6px}.kfb-item+.kfb-item{border-top:1px solid #F1F5FA}',
     '.kfb-item .s{display:block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#A0AFC0;margin-bottom:2px}',
-    '#kfb-queue{position:fixed;right:18px;top:18px;z-index:2147483003;width:286px;max-width:calc(100vw - 36px);max-height:76vh;display:flex;flex-direction:column;background:#fff;border:1px solid #E2E8F1;border-radius:16px;box-shadow:0 16px 44px rgba(16,38,63,.22);font:13px/1.4 -apple-system,system-ui,sans-serif;color:#0F1B2D;overflow:hidden}',
+    '#kfb-queue{position:fixed;right:18px;bottom:18px;z-index:2147483003;width:286px;max-width:calc(100vw - 36px);max-height:76vh;display:flex;flex-direction:column;background:#fff;border:1px solid #E2E8F1;border-radius:16px;box-shadow:0 16px 44px rgba(16,38,63,.22);font:13px/1.4 -apple-system,system-ui,sans-serif;color:#0F1B2D;overflow:hidden}',
     '#kfb-qhd{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid #EEF2F7}',
     '#kfb-qstate{display:inline-flex;align-items:center;gap:6px;font:700 12.5px/1 inherit}#kfb-qstate .em{font-size:14px;line-height:1}',
-    '#kfb-qcount{margin-left:auto;font-size:11px;font-weight:700;color:#46596F;background:#F1F5FA;border-radius:999px;padding:3px 9px}',
+    '#kfb-qcount{font-size:11px;font-weight:700;color:#46596F;background:#F1F5FA;border-radius:999px;padding:3px 9px}',
     '#kfb-qlist{list-style:none;margin:0;padding:8px;overflow-y:auto;display:flex;flex-direction:column;gap:7px}',
     '.kfb-qempty{padding:6px 13px 13px;font-size:12px;color:#8294A8}',
     '.kfb-task{display:flex;align-items:flex-start;gap:8px;padding:9px 11px;border-radius:10px;color:#fff;font-size:12.5px;line-height:1.35;box-shadow:0 2px 6px rgba(16,38,63,.12)}',
@@ -64,7 +67,12 @@
     '#kfb-qfoot{padding:9px 11px;border-top:1px solid #EEF2F7;display:none;align-items:center;gap:8px;font-size:12px}#kfb-qfoot.show{display:flex}',
     '#kfb-qfoot .cd{font-weight:700;color:#0A6F64}',
     '.kfb-qbtn{border:0;border-radius:9px;padding:7px 11px;cursor:pointer;font:700 12px/1 inherit}.kfb-qbtn.go{margin-left:auto;background:#0E8C7E;color:#fff}.kfb-qbtn.cancel{background:#F1F5FA;color:#46596F}',
-    '#kfb-cursor{display:none;padding:5px 13px;border-bottom:1px solid #EEF2F7;font-size:11px;color:#5B6B7B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#kfb-cursor.show{display:block}#kfb-cursor b{color:#0A6F64}'
+    '#kfb-cursor{display:none;padding:5px 13px;border-bottom:1px solid #EEF2F7;font-size:11px;color:#5B6B7B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#kfb-cursor.show{display:block}#kfb-cursor b{color:#0A6F64}',
+    '#kfb-qhd,.kfb-hd{cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}#kfb-qhd:active,.kfb-hd:active{cursor:grabbing}',
+    '#kfb-launch{touch-action:none}',
+    '#kfb-qmin{margin-left:auto;border:0;background:#F1F5FA;width:22px;height:22px;border-radius:7px;cursor:pointer;color:#46596F;font-size:11px;line-height:1;flex:0 0 auto;display:grid;place-items:center;transition:transform .18s}',
+    '#kfb-queue.kfb-min{width:auto}#kfb-queue.kfb-min #kfb-qmin{transform:rotate(-90deg)}#kfb-queue.kfb-min #kfb-qhd{border-bottom:0}',
+    '#kfb-queue.kfb-min #kfb-qlist,#kfb-queue.kfb-min .kfb-qempty,#kfb-queue.kfb-min #kfb-cursor.show,#kfb-queue.kfb-min #kfb-qfoot.show{display:none}'
   ].join('');
   var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
 
@@ -119,7 +127,7 @@
   }
   function openP(noFocus) { composeStart = Date.now(); panel.classList.add('show'); launch.style.display = 'none'; chiptxt.textContent = currentScreen(); try { localStorage.setItem('kfb-open', '1'); } catch (e) {} if (!noFocus) setTimeout(function () { ta.focus(); }, 60); }
   function closeP() { panel.classList.remove('show'); try { localStorage.setItem('kfb-open', '0'); } catch (e) {} if (!recording && !picking) launch.style.display = ''; }
-  launch.onclick = function () { openP(); }; $('#kfb-x').onclick = closeP;
+  launch.onclick = function () { if (launch.__kfbDragged) return; openP(); }; $('#kfb-x').onclick = closeP;
   setInterval(function () { if (panel.classList.contains('show')) chiptxt.textContent = currentScreen(); }, 700);
 
   var msgT;
@@ -206,7 +214,7 @@
       text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90),
       rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }, screen: currentScreen() };
   }
-  function isOurs(el) { return !el || el.closest('#kfb-panel,#kfb-launch,#kfb-rec-dot,#kfb-hl,#kfb-pickbar'); }
+  function isOurs(el) { return !el || el.closest('[id^="kfb-"]'); } // every widget surface carries a kfb- id — and the boxes can be dragged anywhere now
   function targetAt(x, y) { var el = document.elementFromPoint(x, y); return isOurs(el) ? null : el; }
   function onPickMove(e) { var el = targetAt(e.clientX, e.clientY); if (!el) { hl.style.display = 'none'; return; } var r = el.getBoundingClientRect(); hl.style.display = 'block'; hl.style.left = r.left + 'px'; hl.style.top = r.top + 'px'; hl.style.width = r.width + 'px'; hl.style.height = r.height + 'px'; }
   function onPick(e) { e.preventDefault(); e.stopPropagation(); var el = targetAt(e.clientX, e.clientY); if (!el) return; picked = describe(el); exitPick(); openP(); renderPicked(); flash('Element attached'); }
@@ -318,7 +326,7 @@
   /* ---- task queue (top-right) — the live to-do board ---- */
   var queue = document.createElement('div'); queue.id = 'kfb-queue';
   queue.innerHTML =
-    '<div id="kfb-qhd"><span id="kfb-qstate"><span class="em kfb-eyes">👀</span><span id="kfb-qstxt">Claude is watching</span></span><span id="kfb-qcount" style="display:none">0/0</span></div>' +
+    '<div id="kfb-qhd"><span id="kfb-qstate"><span class="em kfb-eyes">👀</span><span id="kfb-qstxt">Claude is watching</span></span><span id="kfb-qcount" style="display:none">0/0</span><button id="kfb-qmin" title="Collapse" aria-label="Collapse the task queue">▾</button></div>' +
     '<div id="kfb-cursor"></div>' +
     '<div class="kfb-qempty" id="kfb-qempty">Send feedback and it queues here — <b>red</b> waiting, <b>orange</b> ⛏️ in progress, <b>green</b> done. Auto-refreshes when all clear.</div>' +
     '<ul id="kfb-qlist"></ul>' +
@@ -329,6 +337,66 @@
       qCount = queue.querySelector('#kfb-qcount'), qFoot = queue.querySelector('#kfb-qfoot'),
       qCd = queue.querySelector('#kfb-qcd'), qCancel = queue.querySelector('#kfb-qcancel'), qGo = queue.querySelector('#kfb-qgo'),
       cursEl = queue.querySelector('#kfb-cursor');
+
+  /* ---- drag + collapse — both floating boxes move out of the way and remember it ---- */
+  function clampN(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function setPos(el, l, t) {
+    var w = el.offsetWidth || 140, h = el.offsetHeight || 44;
+    el.style.left = clampN(l, 8, Math.max(8, innerWidth - w - 8)) + 'px';
+    el.style.top = clampN(t, 8, Math.max(8, innerHeight - h - 8)) + 'px';
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+  }
+  function makeDraggable(el, handle, key) {
+    var sx = 0, sy = 0, ox = 0, oy = 0, moved = false, pid = null;
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.button) return;
+      var hit = e.target && e.target.closest ? e.target.closest('button,a,input,textarea,select,video') : null;
+      if (hit && hit !== el) return;                    // buttons inside a handle keep their own clicks
+      var r = el.getBoundingClientRect();
+      sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top; moved = false; pid = e.pointerId;
+      try { handle.setPointerCapture(pid); } catch (e2) {}
+    });
+    handle.addEventListener('pointermove', function (e) {
+      if (pid === null || e.pointerId !== pid) return;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!moved && dx * dx + dy * dy < 25) return;      // 5px of intent before a click becomes a drag
+      moved = true; el.__kfbDragged = true; e.preventDefault();
+      setPos(el, ox + dx, oy + dy);
+    });
+    function up(e) {
+      if (pid === null || e.pointerId !== pid) return;
+      try { handle.releasePointerCapture(pid); } catch (e2) {}
+      pid = null;
+      if (moved) {
+        var r = el.getBoundingClientRect();
+        try { localStorage.setItem('kfb-pos:' + key, JSON.stringify({ l: Math.round(r.left), t: Math.round(r.top) })); } catch (e2) {}
+        setTimeout(function () { el.__kfbDragged = false; }, 0);   // must outlive the click this pointerup fires
+      }
+      moved = false;
+    }
+    handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+    try {
+      var saved = JSON.parse(localStorage.getItem('kfb-pos:' + key) || 'null');
+      if (saved && typeof saved.l === 'number' && typeof saved.t === 'number') setPos(el, saved.l, saved.t);
+    } catch (e) {}
+  }
+  makeDraggable(queue, queue.querySelector('#kfb-qhd'), 'queue');
+  makeDraggable(panel, panel.querySelector('.kfb-hd'), 'panel');
+  makeDraggable(launch, launch, 'launch');
+  window.addEventListener('resize', function () {        // keep dragged boxes reachable when the window shrinks
+    [queue, panel, launch].forEach(function (el) { if (el.style.left) { var r = el.getBoundingClientRect(); setPos(el, r.left, r.top); } });
+  });
+
+  var qMin = queue.querySelector('#kfb-qmin');
+  function setMin(on, persist) {
+    queue.classList.toggle('kfb-min', on);
+    qMin.title = on ? 'Expand' : 'Collapse';
+    qMin.setAttribute('aria-label', on ? 'Expand the task queue' : 'Collapse the task queue');
+    if (persist) { try { localStorage.setItem('kfb-qmin', on ? '1' : '0'); } catch (e) {} }
+    if (queue.style.left) { var r = queue.getBoundingClientRect(); setPos(queue, r.left, r.top); } // the box just changed size — keep a dragged one on-screen
+  }
+  qMin.onclick = function () { setMin(!queue.classList.contains('kfb-min'), true); };
+  try { if (localStorage.getItem('kfb-qmin') === '1') setMin(true); } catch (e) {}
 
   // showWatching/hideWatching are called by the existing reply/working code — just re-render the header
   function showWatching() { render(); }
@@ -461,7 +529,7 @@
     else { cancelCd(); hideManual(); }
   }
   function startCd() {
-    var n = 3; qFoot.classList.add('show'); qGo.style.display = 'none'; qCancel.style.display = ''; qCd.textContent = 'All done — refreshing in ' + n + '…';
+    var n = 3; setMin(false); qFoot.classList.add('show'); qGo.style.display = 'none'; qCancel.style.display = ''; qCd.textContent = 'All done — refreshing in ' + n + '…';
     cdTimer = setInterval(function () {
       if (busyComposing()) { cancelCd(); showManual(); return; }  // they started typing mid-countdown — never refresh under them
       n--; if (n <= 0) { clearInterval(cdTimer); cdTimer = null; doRefresh(); } else qCd.textContent = 'All done — refreshing in ' + n + '…';
