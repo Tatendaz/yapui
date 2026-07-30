@@ -144,14 +144,18 @@ function guarded(res, fn) { // req 'end' callbacks run outside the request try/c
 const HTML_DIR = path.dirname(path.resolve(HTML_FILE));
 let HTML_DIR_REAL = HTML_DIR; try { HTML_DIR_REAL = fs.realpathSync(HTML_DIR); } catch (e) {}
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.mjs': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.webm': 'video/webm', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json' };
+function insideDir(rootReal, candidate) { // containment via path.relative — rejects .. escapes and absolute jumps
+  const rel = path.relative(rootReal, candidate);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
 function serveSibling(url, res) { // css/js/images referenced by the HTML live next to it — serve them, never anything outside
   let rel; try { rel = decodeURIComponent(url).replace(/^\/+/, ''); } catch (e) { return false; }
   if (!rel || rel.indexOf('\0') !== -1 || rel.split('/').some(function (seg) { return seg === '..' || seg[0] === '.'; })) return false;
   const abs = path.resolve(HTML_DIR, rel);
-  if (!(abs + path.sep).startsWith(HTML_DIR + path.sep)) return false;
+  if (!insideDir(HTML_DIR, abs)) return false;
   // resolve symlinks before serving — a link inside HTML_DIR must not smuggle out a file from beyond it
   let real; try { real = fs.realpathSync(abs); } catch (e) { return false; }
-  if (!(real + path.sep).startsWith(HTML_DIR_REAL + path.sep)) return false;
+  if (!insideDir(HTML_DIR_REAL, real)) return false;
   let st; try { st = fs.statSync(real); } catch (e) { return false; }
   if (!st.isFile()) return false;
   // read before writeHead — a delete/replace race after the stat must 404, not die after the 200 is flushed
