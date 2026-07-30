@@ -282,6 +282,23 @@ async function testRelayRoutes() {
   ok(css.headers['cache-control'] === 'no-store', 'served assets are no-store (an edited page must never come back from cache)');
 }
 
+// The widget only ever runs in a browser (see testRelayRoutes), so these pin
+// the source-level contract of the drag/collapse layer — a refactor that drops
+// a drag handle, a persistence key, or the bottom-right default fails here.
+async function testWidgetContract() {
+  console.log('widget drag/collapse contract:');
+  const src = fs.readFileSync(WIDGET, 'utf8');
+  ok(src.indexOf('#kfb-queue{position:fixed;right:18px;bottom:18px') !== -1, "queue defaults to bottom-right (never over a page's own header controls)");
+  ok(src.indexOf("makeDraggable(queue, queue.querySelector('#kfb-qhd'), 'queue')") !== -1, 'queue drags by its header');
+  ok(src.indexOf("makeDraggable(panel, panel.querySelector('.kfb-hd'), 'panel')") !== -1, 'feedback panel drags by its header');
+  ok(src.indexOf("makeDraggable(launch, launch, 'launch')") !== -1, 'the Feedback button itself drags');
+  ok(src.indexOf("'kfb-pos:' + key") !== -1, 'dragged positions persist under kfb-pos:<box> keys');
+  ok(src.indexOf('if (launch.__kfbDragged) return') !== -1, 'a drag on the launch button suppresses the click that would open the panel');
+  ok(src.indexOf('id="kfb-qmin"') !== -1 && src.indexOf("localStorage.getItem('kfb-qmin')") !== -1, 'queue collapse toggle exists and its state persists');
+  ok(src.indexOf('setMin(false); qFoot.classList.add') !== -1, 'the refresh countdown re-expands a collapsed queue so it is never invisible');
+  ok(src.indexOf('setPointerCapture') !== -1 && src.indexOf('pointercancel') !== -1, 'dragging uses pointer capture (mouse + touch) and survives cancels');
+}
+
 // The agent's lifecycle paths: what happens with no claude installed, and what
 // happens when the resident child is recycled out from under a live queue.
 async function testAgentLifecycle() {
@@ -344,6 +361,7 @@ async function testAgentLifecycle() {
     await testFallbackMode();
     await testFlipStatusGuards();
     await testRelayRoutes();
+    await testWidgetContract();
     await testAgentLifecycle();
   } catch (e) {
     failures++; console.error('  ✗ ' + (e && e.message));
