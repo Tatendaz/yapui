@@ -164,7 +164,11 @@ async function testFallbackMode() {
   const sub = await get(port, '/assets/app.js');
   ok(sub.status === 200 && sub.body === 'window.x=1', 'nested sibling assets are served (containment does not over-reject)');
   ok((await get(port, '/..%2Fpage.html')).status === 404, 'mixed-encoding traversal is blocked');
-  ok((await get(port, '/assets/..%2F..%2Fpage.html')).status === 404, 'deep relative traversal is blocked');
+  // the decoded-.. cases validate the line-149 segment prefilter (no HTTP request
+  // can carry '..' past it, which is what makes the lexical sink guard pure
+  // defense-in-depth); the post-realpath path.relative guard is exercised by the
+  // symlink-escape case below — the only HTTP-reachable route past the prefilter
+  ok((await get(port, '/assets/..%2F..%2Fpage.html')).status === 404, 'deep relative traversal is blocked (prefilter)');
   ok((await get(port, '/%00style.css')).status === 404, 'null-byte paths are rejected');
   // a symlink INSIDE the served dir pointing outside it must not be followed (realpath guard, not just the lexical check)
   const outside = path.join(path.dirname(r.html), '..', 'sym-secret.txt');
