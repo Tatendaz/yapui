@@ -11,7 +11,8 @@ legitimate request; the guard shape is now the canonical one.
 
 ## Motivation
 CodeQL (`js/path-injection`, alerts #1 and #2) flagged the `statSync` /
-`readFileSync` sinks at relay/server.js:155,158. The existing guards
+`readFileSync` sinks at relay/server.js:155,158 (pre-change line numbers;
+the same sinks sit at 159,162 after this change). The existing guards
 (dotfile/`..` segment filter, prefix check, realpath re-check) were sound,
 but the prefix-concatenation shape is both unrecognizable to static
 analysis and easy to regress. `path.relative` + `..`/absolute rejection is

@@ -4,7 +4,7 @@
 **Date:** 2026-07-30
 
 ## Prompts
-1. "Can you create prs fixing the stuff found in security tab for the 3 repos?" (CodeQL alerts from the 2026-07-28 security-baseline rollout; this repo: 2× `js/path-injection` at `relay/server.js:155,158`)
+1. "Can you create prs fixing the stuff found in security tab for the 3 repos?" (CodeQL alerts from the 2026-07-28 security-baseline rollout; this repo: 2× `js/path-injection` at `relay/server.js:155,158`, pre-change line numbers)
 2. "send me the links once you are done so I can merge them"
 
 ## Steps taken
