@@ -4,7 +4,7 @@ Yap at your UI. **Watch Claude rebuild it live.**
 
 [GitHub →](https://github.com/Tatendaz/yapui) [Releases](https://github.com/Tatendaz/yapui/releases)
 
-```
+```sh
 # Claude Code, Cursor, Codex + dozens more
 npx skills add tatendaz/yapui
 ```
@@ -29,7 +29,7 @@ YapUI is a [Claude Code skill](https://code.claude.com/docs/en/skills) that serv
 
 ## Install
 
-```
+```sh
 # one command (via skills.sh) — or pick another option in the README
 npx skills add tatendaz/yapui
 
