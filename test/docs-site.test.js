@@ -50,9 +50,13 @@ function innerOf(html, tag) {
     if (open === -1) break;
     const next = html[open + tag.length + 1];
     const gt = html.indexOf(">", open);
+    if (next !== ">" && next !== " " && next !== "\n") {
+      from = open + 1; // a longer tag name (e.g. <pre> while looking for <p>): keep scanning
+      continue;
+    }
     const close = gt === -1 ? -1 : html.indexOf("</" + tag + ">", gt);
     if (close === -1) break;
-    if (next === ">" || next === " " || next === "\n") found.push(html.slice(gt + 1, close));
+    found.push(html.slice(gt + 1, close));
     from = close + tag.length + 3;
   }
   return found;
