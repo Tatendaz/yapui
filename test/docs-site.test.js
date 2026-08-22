@@ -1,6 +1,8 @@
 // Checks that the GitHub Pages landing page (docs/index.html) stays agent-readable:
 // the text and <h1> sit inside <main>, and the Markdown twin that
 // <link rel="alternate" type="text/markdown"> points at mirrors the page.
+// Also checks the custom 404 page (docs/404.html), which GitHub Pages serves with a real
+// 404 status for every missing path under /yapui/: it must carry short Markdown guidance.
 // Run with: npm test (node --test test/docs-site.test.js)
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -12,6 +14,7 @@ const ROOT = path.resolve(__dirname, "..");
 const SLUG = "yapui";
 const HTML = fs.readFileSync(path.join(ROOT, "docs", "index.html"), "utf8");
 const MD = fs.readFileSync(path.join(ROOT, "docs", "index.md"), "utf8");
+const NOT_FOUND = fs.readFileSync(path.join(ROOT, "docs", "404.html"), "utf8");
 
 // Tags are removed by a character walk rather than a regex: CodeQL treats regex-based
 // HTML filtering as a sanitizer bug (js/bad-tag-filter), and a loop is clearer anyway.
@@ -132,5 +135,42 @@ test("Markdown twin carries every paragraph and list item", () => {
   const plain = twinPlain(MD);
   for (const block of blocks) {
     assert.ok(plain.includes(block), `twin is missing the text: ${block.slice(0, 80)}`);
+  }
+});
+
+test("custom 404 page is a real 404 with Markdown guidance for agents", () => {
+  const [title] = innerOf(NOT_FOUND, "title");
+  assert.ok(title && title.includes("404"), "the title must say 404");
+  assert.ok(NOT_FOUND.includes('<meta name="robots" content="noindex">'), "a 404 must not be indexed");
+  for (const rel of ['rel="canonical"', 'rel="alternate"']) {
+    assert.ok(!NOT_FOUND.includes(rel), `a 404 page has no ${rel} link`);
+  }
+  const [main] = innerOf(NOT_FOUND, "main");
+  assert.ok(main, "expected a <main>");
+  const boilerplate = tagNames(main).filter((t) => ["header", "nav", "aside", "footer"].includes(t));
+  assert.deepEqual(boilerplate, [], "boilerplate element(s) inside <main> would hide the guidance from agents");
+  assert.ok(blockText(main).length < 1500, "the 404 page should stay short");
+  assert.ok(main.includes('<pre class="md"'), 'expected a <pre class="md"> Markdown block inside <main>');
+  const pres = innerOf(main, "pre");
+  assert.equal(pres.length, 1, "exactly one <pre> inside <main>");
+  // The block as an agent reads it: entities decoded, the newline after <pre> dropped.
+  const md = decode(pres[0]).trim();
+  assert.ok(md.startsWith("# 404"), "the Markdown block must start with an H1 naming the 404");
+  for (const needle of [
+    "## Where to look next",
+    "- [Site map](https://tatendaz.github.io/sitemap.xml)",
+    "- [llms.txt](https://tatendaz.github.io/llms.txt)",
+    `https://tatendaz.github.io/${SLUG}/`,
+  ]) {
+    assert.ok(md.includes(needle), `the Markdown block is missing: ${needle}`);
+  }
+  assert.ok(md.length < 700, "the Markdown block must stay short");
+  assert.deepEqual(tagNames(md), [], "the Markdown block must be plain text, not HTML");
+  // The page is served at any depth (/yapui/a/b/c), so a relative href would break.
+  const hrefs = [...NOT_FOUND.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
+  assert.ok(hrefs.length >= 6, "expected the navigation links");
+  for (const href of hrefs) {
+    const absolute = href.startsWith(`/${SLUG}/`) || /^(https?:|mailto:|data:|#)/.test(href);
+    assert.ok(absolute, `relative href on a page served at any depth: ${href}`);
   }
 });
