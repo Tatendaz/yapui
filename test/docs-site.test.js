@@ -76,6 +76,10 @@ test("h1 and content live inside <main>", () => {
   assert.equal(count(HTML, "<h1"), 1, "exactly one <h1>");
   assert.equal(count(main, "<h1"), 1, "the <h1> must be inside <main>");
   assert.ok(blockText(main).length >= 500, "500+ chars of text inside <main>");
+  // Boilerplate-stripping extractors drop <header>/<nav>/<aside>/<footer> before counting.
+  for (const tag of ["<header", "<nav", "<aside", "<footer"]) {
+    assert.ok(!main.toLowerCase().includes(tag), `${tag} inside <main> would hide content from agents`);
+  }
 });
 
 test("head advertises the Markdown twin and llms.txt", () => {

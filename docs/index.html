@@ -91,7 +91,7 @@
     background: var(--bg); color: var(--text); line-height: 1.6;
   }
   .wrap { max-width: 880px; margin: 0 auto; padding: 64px 24px 80px; }
-  header { text-align: center; margin-bottom: 48px; }
+  .hero { text-align: center; margin-bottom: 48px; }
   h1 { font-size: clamp(44px, 8vw, 72px); font-weight: 800; letter-spacing: -1.5px; }
   h1 .mark { color: var(--accent); }
   .tagline { font-size: clamp(20px, 3.5vw, 28px); font-weight: 600; color: var(--muted); margin-top: 10px; }
@@ -134,7 +134,7 @@
 <body>
 <div class="wrap">
   <main>
-  <header>
+  <div class="hero">
     <h1>🗣️ Yap<span class="mark">UI</span></h1>
     <p class="tagline">Yap at your UI. <b>Watch Claude rebuild it live.</b></p>
     <div class="cta">
@@ -142,7 +142,7 @@
       <a class="btn ghost" href="https://github.com/Tatendaz/yapui/releases">Releases</a>
     </div>
     <div class="install"><span class="c"># Claude Code, Cursor, Codex + dozens more</span><br>npx skills add tatendaz/yapui</div>
-  </header>
+  </div>
 
   <figure>
     <img class="demo" src="demo.gif" alt="YapUI demo: a spoken note asking to make the hero bigger and the button red is applied to the live page by a resident Claude agent in about four seconds" width="1386" height="868">
