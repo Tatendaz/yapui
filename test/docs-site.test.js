@@ -168,7 +168,17 @@ test("custom 404 page is a real 404 with Markdown guidance for agents", () => {
   assert.deepEqual(tagNames(md), [], "the Markdown block must be plain text, not HTML");
   // The page is served at any depth (/yapui/a/b/c), so a relative href would break.
   const hrefs = [...NOT_FOUND.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
-  assert.ok(hrefs.length >= 6, "expected the navigation links");
+  // Every pointer the page promises, so dropping one (say the Markdown twin) fails the test.
+  for (const href of [
+    `https://tatendaz.github.io/${SLUG}/`,
+    `https://tatendaz.github.io/${SLUG}/index.md`,
+    "https://github.com/Tatendaz/yapui",
+    "https://tatendaz.github.io/llms.txt",
+    "https://tatendaz.github.io/sitemap.xml",
+    "https://tatendaz.github.io/",
+  ]) {
+    assert.ok(hrefs.includes(href), `the 404 page is missing the link: ${href}`);
+  }
   for (const href of hrefs) {
     const absolute = href.startsWith(`/${SLUG}/`) || /^(https?:|mailto:|data:|#)/.test(href);
     assert.ok(absolute, `relative href on a page served at any depth: ${href}`);
