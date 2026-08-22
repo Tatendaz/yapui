@@ -67,6 +67,25 @@ function section(tag) {
   return found[0];
 }
 const count = (html, needle) => html.split(needle).length - 1;
+// Names of every opening tag in the fragment (lower-case), found by a character walk.
+function tagNames(fragment) {
+  const names = [];
+  let tag = null;
+  for (const ch of fragment) {
+    if (tag !== null) {
+      if (ch === ">") {
+        const name = tag.trim().split(/[\s/]/)[0].toLowerCase();
+        if (name && !name.startsWith("/") && !name.startsWith("!")) names.push(name);
+        tag = null;
+      } else {
+        tag += ch;
+      }
+    } else if (ch === "<") {
+      tag = "";
+    }
+  }
+  return names;
+}
 // The Markdown twin as plain text: no code blocks, links and images reduced to their text.
 const twinPlain = (md) => squash(
   md.replace(/```[\s\S]*?```/g, " ")
@@ -80,10 +99,9 @@ test("h1 and content live inside <main>", () => {
   assert.equal(count(HTML, "<h1"), 1, "exactly one <h1>");
   assert.equal(count(main, "<h1"), 1, "the <h1> must be inside <main>");
   assert.ok(blockText(main).length >= 500, "500+ chars of text inside <main>");
-  // Boilerplate-stripping extractors drop <header>/<nav>/<aside>/<footer> before counting.
-  for (const tag of ["<header", "<nav", "<aside", "<footer"]) {
-    assert.ok(!main.toLowerCase().includes(tag), `${tag} inside <main> would hide content from agents`);
-  }
+  // Boilerplate-stripping extractors drop <header>/<nav>/<aside>/<footer> elements before counting.
+  const boilerplate = tagNames(main).filter((t) => ["header", "nav", "aside", "footer"].includes(t));
+  assert.deepEqual(boilerplate, [], "boilerplate element(s) inside <main> would hide content from agents");
 });
 
 test("head advertises the Markdown twin and llms.txt", () => {
