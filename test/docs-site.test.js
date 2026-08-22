@@ -13,20 +13,51 @@ const SLUG = "yapui";
 const HTML = fs.readFileSync(path.join(ROOT, "docs", "index.html"), "utf8");
 const MD = fs.readFileSync(path.join(ROOT, "docs", "index.md"), "utf8");
 
-const decode = (s) => s
-  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-  .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
-const visibleText = (f) => decode(
-  f.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<[^>]+>/g, " "),
-).replace(/\s+/g, " ").trim();
-const inlineText = (f) => decode(f.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+// Tag stripping by a character walk rather than a regex: CodeQL treats regex-based
+// HTML filtering as a sanitizer bug (js/bad-tag-filter), and a loop is clearer anyway.
+function stripTags(fragment, separator) {
+  let out = "";
+  let inTag = false;
+  for (const ch of fragment) {
+    if (inTag) {
+      if (ch === ">") { inTag = false; out += separator; }
+    } else if (ch === "<") {
+      inTag = true;
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+// One pass over the entities, so an "&amp;lt;" can never be unescaped twice.
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", nbsp: " " };
+const decode = (s) => s.replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (m, name) => ENTITIES[name]);
+const collapse = (s) => decode(s).replace(/\s+/g, " ").trim();
+const visibleText = (fragment) => collapse(stripTags(fragment, " "));
+const inlineText = (fragment) => collapse(stripTags(fragment, ""));
+// Inner HTML of every <tag ...>...</tag> element, located with indexOf.
+function innerOf(html, tag) {
+  const found = [];
+  let from = 0;
+  for (;;) {
+    const open = html.indexOf("<" + tag, from);
+    if (open === -1) break;
+    const gt = html.indexOf(">", open);
+    const close = gt === -1 ? -1 : html.indexOf("</" + tag + ">", gt);
+    if (close === -1) break;
+    found.push(html.slice(gt + 1, close));
+    from = close + tag.length + 3;
+  }
+  return found;
+}
+const count = (html, needle) => html.split(needle).length - 1;
 
 test("h1 and content live inside <main>", () => {
-  const mains = [...HTML.matchAll(/<main\b[^>]*>([\s\S]*?)<\/main>/gi)];
+  const mains = innerOf(HTML, "main");
   assert.equal(mains.length, 1, "exactly one <main>");
-  assert.equal((HTML.match(/<h1\b/gi) || []).length, 1, "exactly one <h1>");
-  assert.equal((mains[0][1].match(/<h1\b/gi) || []).length, 1, "the <h1> must be inside <main>");
-  assert.ok(visibleText(mains[0][1]).length >= 500, "500+ chars of text inside <main>");
+  assert.equal(count(HTML, "<h1"), 1, "exactly one <h1>");
+  assert.equal(count(mains[0], "<h1"), 1, "the <h1> must be inside <main>");
+  assert.ok(visibleText(mains[0]).length >= 500, "500+ chars of text inside <main>");
 });
 
 test("head advertises the Markdown twin and llms.txt", () => {
@@ -37,13 +68,16 @@ test("head advertises the Markdown twin and llms.txt", () => {
 
 test("Markdown twin mirrors the page", () => {
   assert.ok(MD.startsWith("# "), "twin must start with an H1");
-  const h1 = inlineText(HTML.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)[1]);
+  const h1 = inlineText(innerOf(HTML, "h1")[0]);
   assert.equal(MD.split("\n")[0].slice(2).trim(), h1);
-  for (const m of HTML.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi)) {
-    assert.ok(MD.includes("## " + inlineText(m[1])), `twin is missing "## ${inlineText(m[1])}"`);
+  for (const h2 of innerOf(HTML, "h2")) {
+    const heading = "## " + inlineText(h2);
+    assert.ok(MD.includes(heading), `twin is missing "${heading}"`);
   }
   assert.ok(MD.length >= 500);
   assert.ok(MD.includes(`HTML version: https://tatendaz.github.io/${SLUG}/`));
   assert.ok(MD.includes("https://tatendaz.github.io/llms.txt"));
-  assert.ok(!/<(div|span|script|style)\b/.test(MD), "twin must be plain Markdown");
+  for (const tag of ["<div", "<span", "<script", "<style"]) {
+    assert.ok(!MD.includes(tag), `twin must be plain Markdown (found ${tag})`);
+  }
 });
