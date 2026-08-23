@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node test/e2e.test.js"
+    "test": "node test/e2e.test.js && node --test test/docs-site.test.js"
   },
   "license": "MIT"
 }
