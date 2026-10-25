@@ -1,0 +1,16 @@
+# Version updates once a month, at least 7 days after a release (cooldown), so a
+# freshly published malicious version never lands first. Security updates ignore
+# the cooldown and still open right away.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
+      github-actions-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
