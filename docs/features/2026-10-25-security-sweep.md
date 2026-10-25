@@ -15,8 +15,8 @@ two floating tags (`@v5`, `@v4`) and a checkout that leaves the job token in
 other workflows were already pinned.
 
 ## What changed
-- `actions/checkout@v5` → `@fbc6f39… # v5.1.0` (what `v5` points at today, published 2026-07-16).
-- `actions/dependency-review-action@v4` → `@2031cfc… # v4.9.0` (what `v4` points at today, published 2026-03-03).
+- `actions/checkout@v5` → `@fbc6f39… # v5.1.0` (what `v5` points at today, released 2026-07-20).
+- `actions/dependency-review-action@v4` → `@2031cfc… # v4.9.0` (what `v4` points at today, released 2026-03-03).
 - `persist-credentials: false` on checkout.
 
 ## Notes
