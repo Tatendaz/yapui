@@ -4,8 +4,9 @@ name: Merge when clean
 #   1. every check run and commit status finished green,
 #   2. a real review ran on that commit: CodeRabbit "Review completed", or the
 #      owner's backup review (`review-failover` = success, posted by the owner),
-#   3. 0 unresolved review threads, and no merge conflicts.
-# Covers only PRs that opt in: Dependabot PRs, and the owner's PRs from a
+#   3. 0 unresolved review threads, no "changes requested" review, no merge conflicts,
+#      and at least one CI check ran. Anything it cannot read in full blocks the merge.
+# Covers only PRs that opt in: Dependabot PRs (not major updates), and the owner's PRs from a
 # `security/` branch or labelled `automerge`. Other PRs are left to the owner and
 # to Claude sessions working under the merge-when-clean rule. Skips drafts, forks, Night Shift PRs,
 # PRs labelled `needs-owner` / `do-not-merge`, and PRs that touch database rules,
@@ -53,27 +54,54 @@ jobs:
                      and ((.head.ref | startswith(\"security/\")) or any(.labels[]; .name==\"automerge\")))) | .number")
           [ -z "$prs" ] && { echo "no open PRs to check"; exit 0; }
 
+          # 0 when any "from A to B" in the text changes the major version (or the minor of a 0.x).
+          is_major() {
+            local a b seen=no
+            while read -r a b; do
+              seen=yes; a=${a#v}; a=${a%.}; b=${b#v}; b=${b%.}
+              [ "${a%%.*}" != "${b%%.*}" ] && return 0
+              [ "${a%%.*}" = 0 ] && [ "$(cut -d. -f2 <<<"$a")" != "$(cut -d. -f2 <<<"$b")" ] && return 0
+            done < <(grep -oE 'from v?[0-9][0-9A-Za-z.+-]* to v?[0-9][0-9A-Za-z.+-]*' | awk '{print $2, $4}')
+            # No version found: treat as major, so a person looks at it.
+            [ "$seen" = no ]
+          }
+
           check_pr() {
-            local pr=$1 j sha body labels files runs pending failed st bad fo cr reviewed unresolved
-            j=$(gh api "repos/$REPO/pulls/$pr") || return
+            local pr=$1 j sha title body author labels changed files runs total pending failed st bad fo cr reviewed gql decision more unresolved
+            j=$(gh api "repos/$REPO/pulls/$pr") || { echo "#$pr: could not read the PR"; return; }
             sha=$(jq -r .head.sha <<<"$j")
+            title=$(jq -r '.title // ""' <<<"$j")
             body=$(jq -r '.body // ""' <<<"$j")
+            author=$(jq -r .user.login <<<"$j")
             labels=$(jq -r '[.labels[].name] | join(",")' <<<"$j")
             case ",$labels," in *,needs-owner,*|*,do-not-merge,*) echo "#$pr: skip (label)"; return;; esac
             if grep -q 'Tatendaz/ideas-inbox#17' <<<"$body"; then echo "#$pr: skip (Night Shift PR)"; return; fi
-            files=$(gh api --paginate "repos/$REPO/pulls/$pr/files" --jq '.[] | .filename, (.previous_filename // empty)')
-            if grep -Eq '(^|/)(firestore\.rules|storage\.rules|database\.rules\.json)$|(^|/)migrations/|(^|/)terraform/|\.tf$|^\.github/workflows/merge-when-clean\.yml$' <<<"$files"; then
+            if [ "$author" = "dependabot[bot]" ] && is_major <<<"$title"$'\n'"$body"; then
+              echo "#$pr: skip (Dependabot major update; a person merges these)"; return
+            fi
+
+            # Fail closed: if the file list cannot be read in full, do not merge.
+            changed=$(jq -r .changed_files <<<"$j")
+            files=$(gh api --paginate "repos/$REPO/pulls/$pr/files?per_page=100" \
+              --jq '.[] | "\(.filename)\t\(.previous_filename // "")"') || { echo "#$pr: could not read the file list"; return; }
+            if [ -z "$files" ] || [ "$(grep -c . <<<"$files")" != "$changed" ]; then
+              echo "#$pr: file list incomplete ($changed changed); not merging"; return
+            fi
+            if tr '\t' '\n' <<<"$files" | grep -Eq '(^|/)(firestore\.rules|storage\.rules|database\.rules\.json)$|(^|/)migrations/|(^|/)terraform/|\.tf$|^\.github/workflows/merge-when-clean\.yml$'; then
               echo "#$pr: skip (touches files the owner merges)"; return
             fi
             if [ "$(jq -r .mergeable_state <<<"$j")" = "dirty" ]; then echo "#$pr: merge conflicts"; return; fi
 
-            runs=$(gh api "repos/$REPO/commits/$sha/check-runs?per_page=100" \
-              --jq '[.check_runs[] | select(.name!="Merge when clean")] | group_by(.name) | map(max_by(.started_at))')
+            runs=$(gh api --paginate "repos/$REPO/commits/$sha/check-runs?per_page=100" --jq '.check_runs[]' \
+              | jq -s '[.[] | select(.name!="Merge when clean")] | group_by(.name) | map(max_by(.started_at))') \
+              || { echo "#$pr: could not read checks"; return; }
+            total=$(jq length <<<"$runs")
             pending=$(jq '[.[] | select(.status!="completed")] | length' <<<"$runs")
             failed=$(jq '[.[] | select(.status=="completed" and ((.conclusion // "") | IN("success","neutral","skipped") | not))] | length' <<<"$runs")
 
-            st=$(gh api "repos/$REPO/commits/$sha/statuses?per_page=100" \
-              --jq 'group_by(.context) | map(sort_by(.created_at) | last)')
+            st=$(gh api --paginate "repos/$REPO/commits/$sha/statuses?per_page=100" --jq '.[]' \
+              | jq -s 'group_by(.context) | map(sort_by(.created_at) | last)') \
+              || { echo "#$pr: could not read statuses"; return; }
             bad=$(jq '[.[] | select(.context!="CodeRabbit" and .context!="review-failover") | select(.state!="success")] | length' <<<"$st")
             fo=$(jq -r '[.[] | select(.context=="review-failover")][0] | "\(.state // "none") \(.creator.login // "-")"' <<<"$st")
             cr=$(jq -r '[.[] | select(.context=="CodeRabbit")][0] | "\(.state // "none") \(.creator.login // "-") \(.description // "")"' <<<"$st")
@@ -82,12 +110,17 @@ jobs:
             case "$cr" in "success coderabbitai[bot] "*"Review completed"*) reviewed=yes;; esac
 
             # shellcheck disable=SC2016  # GraphQL variables, not shell
-            unresolved=$(gh api graphql -f query='query($o:String!,$n:String!,$pr:Int!){ repository(owner:$o,name:$n){ pullRequest(number:$pr){
-                reviewThreads(first:100){ nodes{ isResolved } } } } }' -f o="${REPO%/*}" -f n="${REPO#*/}" -F pr="$pr" \
-              --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length')
+            gql=$(gh api graphql -f query='query($o:String!,$n:String!,$pr:Int!){ repository(owner:$o,name:$n){ pullRequest(number:$pr){
+                reviewDecision reviewThreads(first:100){ pageInfo{ hasNextPage } nodes{ isResolved } } } } }' \
+                -f o="${REPO%/*}" -f n="${REPO#*/}" -F pr="$pr" \
+              --jq '.data.repository.pullRequest | "\(.reviewDecision // "NONE") \(.reviewThreads.pageInfo.hasNextPage) \([.reviewThreads.nodes[] | select(.isResolved==false)] | length)"') \
+              || { echo "#$pr: could not read review threads"; return; }
+            read -r decision more unresolved <<<"$gql"
 
-            echo "#$pr $sha: checks pending=$pending failed=$failed, other statuses not green=$bad, reviewed=$reviewed, unresolved threads=$unresolved"
-            if [ "$pending" != 0 ] || [ "$failed" != 0 ] || [ "$bad" != 0 ] || [ "$reviewed" != yes ] || [ "$unresolved" != 0 ]; then
+            echo "#$pr $sha: checks=$total pending=$pending failed=$failed, other statuses not green=$bad, reviewed=$reviewed, decision=$decision, unresolved threads=$unresolved (more=$more)"
+            if [ "$total" = 0 ]; then echo "#$pr: no CI checks on this commit yet"; return; fi
+            if [ "$pending" != 0 ] || [ "$failed" != 0 ] || [ "$bad" != 0 ] || [ "$reviewed" != yes ] \
+               || [ "$decision" = CHANGES_REQUESTED ] || [ "$more" != false ] || [ "$unresolved" != 0 ]; then
               echo "#$pr: not clean yet"; return
             fi
             gh pr merge "$pr" --repo "$REPO" --squash --delete-branch --match-head-commit "$sha" \
