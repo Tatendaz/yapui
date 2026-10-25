@@ -86,7 +86,7 @@ jobs:
         # actions/checkout v4.4.0 — SHA-pinned; this is the exact commit that
         # the floating `v4` tag resolved to when it was pinned, so behaviour is
         # unchanged, it just can no longer be moved out from under us.
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           # Keep the job's GITHUB_TOKEN out of .git/config so nothing later in
           # the job (or in a compromised action) can reuse it.
