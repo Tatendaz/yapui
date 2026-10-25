@@ -16,7 +16,7 @@
 - After the coordinator update: removed `.coderabbit.yaml` (it only held the Dependabot ignore) and copied `merge-when-clean.yml` unchanged.
 - Ran `zizmor` (0 findings), `actionlint` (no errors), `npm test`.
 
-- Replaced merge-when-clean with template v5 (sha256 1c493dd7…) and deleted `dependabot-auto-merge.yml`.
+- Replaced merge-when-clean with template v6 (sha256 af7e7bd9…) and deleted `dependabot-auto-merge.yml`.
 
 ## Decisions
 - No gitleaks job: the repo is public, and GitHub secret scanning covers public repos.
