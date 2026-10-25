@@ -11,14 +11,9 @@ on:
   pull_request:
     branches: [main, master]
 
-# Dependabot-triggered runs get a read-only token by default; raise it so the
-# job can approve and enable auto-merge on the PR. (Dependabot PR branches live
-# in this repo, so this elevation is allowed — see GitHub's "Automating
-# Dependabot" docs.)
+# Read-only by default; only the auto-merge job below gets write access.
 permissions:
-  contents: write
-  pull-requests: write
-  checks: read
+  contents: read
 
 # One run per PR; a new push supersedes the old run (whose merge would be
 # rejected anyway by --match-head-commit below).
@@ -35,6 +30,14 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    # Dependabot-triggered runs get a read-only token by default; raise it so the
+    # job can approve and enable auto-merge on the PR. (Dependabot PR branches live
+    # in this repo, so this elevation is allowed — see GitHub's "Automating
+    # Dependabot" docs.)
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
     steps:
       - name: Fetch Dependabot metadata
         id: meta
@@ -67,7 +70,7 @@ jobs:
           fi
           echo "Auto-merge could not be enabled (no pending requirements); waiting on sibling checks."
           sleep 20  # let sibling workflows register their check runs
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             pending=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" \
               --jq '[.check_runs[] | select(.name != "Dependabot auto-merge") | select(.status != "completed")] | length')
             [ "$pending" = "0" ] && break

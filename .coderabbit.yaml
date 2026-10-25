@@ -1,0 +1,7 @@
+# Dependabot PRs have no "@coderabbitai ignore" line, so each one would start an
+# automatic review and spend the shared CodeRabbit budget. Skip them; they are
+# gated by CI and the Dependabot auto-merge workflow instead.
+reviews:
+  auto_review:
+    ignore_usernames:
+      - "dependabot[bot]"
